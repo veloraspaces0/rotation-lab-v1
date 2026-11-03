@@ -1,0 +1,5 @@
+Rotation Lab V4 activation request
+
+This file is a one-time push trigger for .github/workflows/rotation-lab-v4.yml.
+A successful run records only an initial paper-trading baseline; no past trades are fabricated.
+All future observations are simulated using public Binance market data.
