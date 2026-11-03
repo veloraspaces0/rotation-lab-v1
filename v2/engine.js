@@ -39,6 +39,7 @@ function simulate(prices,p,custom){
   let cash=capital,position=null,units=0,spent=0,entryBar=0;
   let peak=capital,maxDD=0,cooldownUntil=start,pausedUntil=0,queued=null;
   let costs=0,closed=0,wins=0,swaps=0,brakes=0,orders=[],exposurePeak=0,blockedSignals=0;
+  const completedTrades=[];let currentTrade=null;
   const curve=[],index=[];
   function equityAt(i){
     return cash+(position?units*prices[position][i].c*(1-unitCost):0);
@@ -50,6 +51,8 @@ function simulate(prices,p,custom){
     if(!(amount+1e-8>=minOrder&&price>0))return false;
     spent=amount;units=amount*(1-unitCost)/price;cash-=amount;
     costs+=amount*unitCost;position=sym;entryBar=i;
+    currentTrade={asset:sym,entryUTC:new Date(prices[sym][i].t).toISOString(),entryPrice:price,entryBar:i,
+      entryReason:reason,investedVirtual:amount,estimatedBuyCostVirtual:amount*unitCost};
     orders.push({t:prices[sym][i].t,action:'COMPRA',s:sym,reason,pl:null});
     return true;
   }
@@ -58,7 +61,18 @@ function simulate(prices,p,custom){
     const sym=position,price=prices[sym][i].o;
     const gross=units*price,received=gross*(1-unitCost),pl=received-spent;
     costs+=gross*unitCost;cash+=received;closed++;if(pl>=0)wins++;
-    orders.push({t:prices[sym][i].t,action:kind==='brake'?'PAUSA':kind==='stop'?'STOP':'VENDA',s:sym,reason,pl});
+    const exitType=kind==='brake'?'PAUSA':kind==='stop'?'STOP':'VENDA';
+    orders.push({t:prices[sym][i].t,action:exitType,s:sym,reason,pl});
+    if(currentTrade){
+      const barsHeld=i-currentTrade.entryBar;
+      completedTrades.push({...currentTrade,exitUTC:new Date(prices[sym][i].t).toISOString(),exitPrice:price,
+        exitAction:exitType,exitReason:reason,barsHeld,hoursHeld:barsHeld*4,
+        grossPriceReturnPct:(price/currentTrade.entryPrice-1)*100,
+        netReturnPct:(received/currentTrade.investedVirtual-1)*100,
+        netPnLVirtual:pl,estimatedSellCostVirtual:gross*unitCost,
+        estimatedTotalCostsVirtual:currentTrade.estimatedBuyCostVirtual+gross*unitCost});
+    }
+    currentTrade=null;
     position=null;spent=0;units=0;entryBar=0;
   }
   for(let i=start;i<n;i++){
@@ -131,7 +145,9 @@ function simulate(prices,p,custom){
     }
   }
   return {curve,index,final:curve[curve.length-1],returnPct:(curve[curve.length-1]/capital-1)*100,
-    maxDD,costs,closed,wins,swaps,brakes,orders,exposurePeak,blockedSignals,cfg};
+    maxDD,costs,closed,wins,swaps,brakes,orders,completedTrades,
+    openTrade:currentTrade?{...currentTrade,unrealizedPnLVirtual:curve[curve.length-1]-cash-currentTrade.investedVirtual}:null,
+    exposurePeak,blockedSignals,cfg};
 }
 function stats(curve,initial,from,to){
   const a=from==null?0:from,b=to==null?curve.length-1:to;
