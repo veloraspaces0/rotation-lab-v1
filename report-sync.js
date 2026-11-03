@@ -1,13 +1,13 @@
 /* Rotation Lab V1: compartilhamento voluntario de resultados simulados */
 'use strict';
 (function(){
-  const KEY='rotation_lab_v1_public_report_url';
-  const ENDPOINT='https://api.jsonstorage.net/v1/json';
+  const KEY='rotation_lab_v1_jsonblob_report_v2';
+  const PROVIDERS=['https://jsonblob.com/api/jsonBlob','https://superjsonblob.com/api/jsonBlob'];
   let url=null,latest=null,busy=false,queued=false;
   const id=s=>document.getElementById(s);
   const round=(x,n=3)=>Number(Number(x).toFixed(n));
   function valid(v){
-    try{const x=new URL(v);return x.protocol==='https:'&&x.hostname==='api.jsonstorage.net'&&/^\/v1\/json\/[^/]+\/[^/]+\/?$/.test(x.pathname)}
+    try{const x=new URL(v);return x.protocol==='https:'&&['jsonblob.com','superjsonblob.com'].includes(x.hostname)&&/^\/api\/jsonBlob\/[a-zA-Z0-9_-]+\/?$/.test(x.pathname)}
     catch(e){return false}
   }
   try{let saved=localStorage.getItem(KEY);if(valid(saved))url=saved}catch(e){}
@@ -26,7 +26,7 @@
     '<button class="button primary" type="button" id="repCopy">Copiar link</button>',
     '<button class="button outline" type="button" id="repStop">Parar envios</button>',
     '</div></div>',
-    '<p class="hint" style="margin-top:12px">Envie o link ao ChatGPT <strong>uma vez</strong>. As próximas simulações serão enviadas enquanto esta página estiver aberta. Somente dados virtuais são compartilhados com um serviço externo. Quem tiver o link pode ler os resultados. Parar envios não apaga o conteúdo publicado.</p>',
+    '<p class="hint" style="margin-top:12px">Envie o link ao ChatGPT <strong>uma vez</strong>. As próximas simulações serão enviadas enquanto esta página estiver aberta. Somente dados virtuais são compartilhados com armazenamento externo sem conta. <strong>Quem tiver o link pode ler e possivelmente alterar</strong> os resultados. Parar envios não apaga o conteúdo publicado.</p>',
     '<button class="button outline" type="button" id="repGithub" style="width:100%;margin-top:12px">Enviar pelo GitHub (alternativa)</button>'
   ].join('');
   const settings=id('runStatus')?.closest('section');
@@ -67,10 +67,15 @@
     const dest=url;
     status('Sincronizando resultado...');
     try{
+      const toSend=latest;
       const r=await fetch(dest,{method:'PUT',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(latest),cache:'no-store'});
-      if(!r.ok)throw Error('HTTP '+r.status);
-      if(url===dest)status('✓ Resultado atualizado online em '+new Date().toLocaleTimeString('pt-BR'));
+        body:JSON.stringify(toSend),cache:'no-store'});
+      if(!r.ok){const message=(await r.text()).slice(0,130);throw Error('HTTP '+r.status+' '+message)}
+      const check=await fetch(dest,{cache:'no-store'});
+      if(!check.ok)throw Error('Falha na leitura: HTTP '+check.status);
+      const back=await check.json();
+      if(back.sentAt!==toSend.sentAt)throw Error('A atualização não apareceu no relatório');
+      if(url===dest)status('✓ Resultado atualizado e verificado em '+new Date().toLocaleTimeString('pt-BR'));
     }catch(e){
       if(url===dest)status('Falha ao atualizar ('+e.message+'). Use o GitHub como alternativa.');
     }finally{
@@ -82,17 +87,35 @@
     if(!latest){status('Faça uma simulação primeiro.');return}
     id('repEnable').disabled=true;
     status('Criando relatório...');
+    const problems=[];
     try{
-      const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(latest),cache:'no-store'});
-      if(!r.ok)throw Error('HTTP '+r.status);
-      const obj=await r.json();
-      if(!obj||!valid(obj.uri))throw Error('URL inválida retornada pelo serviço');
-      url=obj.uri;
-      try{localStorage.setItem(KEY,url)}catch(e){}
-      status('✓ Ativado! Copie o link e envie uma única vez ao ChatGPT.');
-    }catch(e){status('Não foi possível ativar ('+e.message+'). Tente a alternativa GitHub.')}
-    finally{id('repEnable').disabled=false}
+      for(const endpoint of PROVIDERS){
+        try{
+          const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(latest),cache:'no-store'});
+          if(!r.ok){const detail=(await r.text()).slice(0,130);throw Error('HTTP '+r.status+' '+detail)}
+          const location=r.headers.get('Location')||r.headers.get('location');
+          let link=location?new URL(location,endpoint).href:null;
+          if(!valid(link)){
+            const res=await r.json().catch(()=>({}));
+            const itemId=res.id||res.blobId||res.identifier;
+            if(itemId)link=endpoint+'/'+encodeURIComponent(String(itemId));
+          }
+          if(!valid(link))throw Error('O servidor não retornou link público válido');
+          const check=await fetch(link,{cache:'no-store'});
+          if(!check.ok)throw Error('Falha na verificação do link: HTTP '+check.status);
+          const saved=await check.json();
+          if(saved.app!==latest.app||saved.sentAt!==latest.sentAt)throw Error('Verificação de conteúdo não corresponde');
+          url=link;
+          try{localStorage.setItem(KEY,url)}catch(e){}
+          status('✓ Sincronização ativada e testada! Copie o link e envie ao ChatGPT uma vez.');
+          return;
+        }catch(e){problems.push(new URL(endpoint).hostname+': '+e.message)}
+      }
+      throw Error(problems.join(' | '));
+    }catch(e){
+      status('Não foi possível sincronizar: '+e.message+'. Use a alternativa GitHub abaixo.');
+    }finally{id('repEnable').disabled=false}
   }
   async function copy(){
     if(!url)return;
