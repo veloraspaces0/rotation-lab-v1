@@ -1,6 +1,9 @@
 name: Rotation Lab V4 - Paper Forward
 
 on:
+  push:
+    paths:
+      - 'v4/activate.txt'
   workflow_dispatch:
   schedule:
     # Binance 4h candles end at 00:00, 04:00, 08:00, 12:00, 16:00 and 20:00 UTC.
