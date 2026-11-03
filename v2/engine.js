@@ -3,7 +3,7 @@
 'use strict';
 const SYMBOLS=['BTC','ETH','SOL','BNB','XRP'];
 const DEFAULTS=Object.freeze({
-  exposure:0.60,stop:0.03,lookback:12,minimumScore:0.8,
+  exposure:0.70,stop:0.03,lookback:12,minimumScore:0.8,
   rotationGap:2.0,minimumHold:6,cooldown:12,
   trendFast:36,trendSlow:72,trendBuffer:0.002,
   maxDrawdownTrigger:0.08,pauseAfterDrawdown:48
@@ -38,7 +38,7 @@ function simulate(prices,p,custom){
   const minOrder=p.minOrder,capital=p.capital;
   let cash=capital,position=null,units=0,spent=0,entryBar=0;
   let peak=capital,maxDD=0,cooldownUntil=start,pausedUntil=0,queued=null;
-  let costs=0,closed=0,wins=0,swaps=0,brakes=0,orders=[],exposurePeak=0;
+  let costs=0,closed=0,wins=0,swaps=0,brakes=0,orders=[],exposurePeak=0,blockedSignals=0;
   const curve=[],index=[];
   function equityAt(i){
     return cash+(position?units*prices[position][i].c*(1-unitCost):0);
@@ -110,6 +110,7 @@ function simulate(prices,p,custom){
       if(i>=cooldownUntil&&best.score>=cfg.minimumScore){
         const budget=nav*cfg.exposure;
         if(budget+1e-8>=minOrder)queued={kind:'buy',to:best.s,reason:'Entrada confirmada por tendência'};
+        else blockedSignals++;
       }
       continue;
     }
@@ -130,7 +131,7 @@ function simulate(prices,p,custom){
     }
   }
   return {curve,index,final:curve[curve.length-1],returnPct:(curve[curve.length-1]/capital-1)*100,
-    maxDD,costs,closed,wins,swaps,brakes,orders,exposurePeak,cfg};
+    maxDD,costs,closed,wins,swaps,brakes,orders,exposurePeak,blockedSignals,cfg};
 }
 function stats(curve,initial,from,to){
   const a=from==null?0:from,b=to==null?curve.length-1:to;
