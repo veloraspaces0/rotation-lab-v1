@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#071017">
+<meta name="description" content="Rotation Lab V4.1: acompanhamento prospectivo com GitHub Actions, dados públicos Binance, capital virtual e trilha de auditoria.">
+<title>Rotation Lab V4.1 — Forward Paper Monitor</title>
+<style>
+:root{color-scheme:dark;--bg:#071017;--panel:#0e1b25;--panel2:#122531;--border:#27404b;--txt:#e9f3f5;--muted:#a4b6c2;--green:#63e1ae;--red:#fa939a;--blue:#79b8ec;--yellow:#f9c77c}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 80% -5%,#193d47 0%,#071017 45%);color:var(--txt);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif}
+main{width:min(1100px,100%);margin:0 auto;padding:20px 15px 55px}
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:20px}
+.brand{display:flex;align-items:center;gap:12px;font-size:19px;font-weight:830;letter-spacing:.5px}
+.logo{width:41px;height:41px;display:grid;place-items:center;border-radius:13px;background:#183d34;border:1px solid #3f9279;font-size:25px}
+.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:1px;font-weight:600}
+.chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:750}
+.chip.blue{color:#ace0f9;border-color:#315669;background:#132b39}
+.chip.safe{color:#95f0ca;border-color:#315d4c;background:#102b23}
+h1{font-size:clamp(25px,5vw,41px);line-height:1.09;letter-spacing:-1px;margin:9px 0 10px}
+h2{font-size:20px;margin:0 0 7px}
+h3{font-size:15px;margin:0 0 10px}
+p{margin:0 0 10px}
+.eyebrow{color:var(--green);font-size:11px;font-weight:800;letter-spacing:1.5px}
+.muted{color:var(--muted)}
+.hero{padding:25px 23px;border:1px solid var(--border);background:linear-gradient(120deg,#132c33,#0b1c26 55%);border-radius:17px;margin-bottom:17px}
+.hero p{max-width:800px;color:#b8cbd1}
+.actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:15px}
+.btn{font:inherit;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:43px;padding:10px 14px;text-decoration:none;border-radius:11px;border:1px solid #36515c;background:#1a303d;color:#eaf5f9;font-weight:730;cursor:pointer}
+.btn.primary{background:#65ddaf;border-color:#65ddaf;color:#07271c}
+.btn:active{transform:translateY(1px)}
+.note{padding:11px 13px;border-radius:11px;background:#241f1c;border:1px solid #594a37;color:#efcc9b;font-size:12px;line-height:1.6;margin:15px 0}
+.section{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:19px;margin:15px 0}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metric{background:var(--panel2);border:1px solid #28424e;border-radius:12px;padding:13px;min-width:0}
+.metric .label{font-size:11px;color:var(--muted);min-height:27px}
+.metric .big{font-size:clamp(18px,2.7vw,29px);font-weight:830;letter-spacing:-.6px;margin:8px 0 2px;white-space:nowrap}
+.metric .sub{font-size:11px;color:var(--muted)}
+.up{color:var(--green)}.down{color:var(--red)}
+.statusline{border:1px solid #34505d;padding:10px 12px;background:#122733;border-radius:10px;margin:11px 0;color:#bad0dc}
+.statusline.bad{border-color:#753c45;background:#28181e;color:#ffb5be}
+.statusline.good{border-color:#2f775f;background:#122b24;color:#a5efcf}
+.mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.tile{border:1px solid #29434e;background:#0e1d27;border-radius:12px;padding:13px}
+.tile strong{display:block;margin-bottom:4px}
+small{font-size:11px}
+.legend{display:flex;flex-wrap:wrap;gap:9px 16px;margin:10px 0;font-size:11px;color:#bbcbd2}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.chartbox{border:1px solid #203843;background:#091922;border-radius:13px;padding:10px;overflow:hidden}
+canvas{display:block;width:100%;height:280px}
+.scroll{overflow-x:auto;margin-top:12px;border:1px solid #26414c;border-radius:11px}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:12px}
+thead{background:#142b38;color:#bdd0d8}
+th,td{padding:11px;border-bottom:1px solid #243e47;text-align:left;vertical-align:top}
+tr:last-child td{border-bottom:none}
+td:nth-child(3),td:nth-child(4),td:nth-child(5){text-align:right;white-space:nowrap}
+th:nth-child(3),th:nth-child(4),th:nth-child(5){text-align:right}
+details{padding:12px 13px;border:1px solid #35515d;border-radius:10px;margin-top:12px}
+summary{cursor:pointer;font-weight:750}
+a{color:#8dd9ed}
+footer{padding:18px 2px;color:var(--muted);font-size:11px;line-height:1.65}
+.gridline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.gridline .tile{min-height:100px}
+.kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+@media(max-width:730px){main{padding:14px 11px 42px}.section{padding:15px}.hero{padding:19px 15px}
+.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.mini-grid{grid-template-columns:1fr}
+.gridline{grid-template-columns:1fr}.btn{flex:1 1 145px}.metric .big{font-size:23px}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand"><div class="logo">↗</div><div>ROTATION LAB <span style="color:#65ddaf">V4</span><small>AUDITED PAPER MONITOR · GITHUB</small></div></div>
+    <div class="actions" style="margin:0"><span class="chip safe">● SEM DINHEIRO REAL</span><span class="chip blue">4H · SHA-256</span></div>
+  </header>
+  <section class="hero">
+    <div class="eyebrow">PESQUISA PROSPECTIVA / SEM HISTÓRICO INVENTADO</div>
+    <h1>O mercado decide. Registramos também sinais que não foram negociados.</h1>
+    <p>A V4.1 confirma os preços com duas leituras do ticker, bookTicker e candle de 1 minuto; bloqueia compras com sinais atrasados e registra sinais-sombra dos cinco ativos. Tudo é virtual, público e auditável.</p>
+    <div class="actions">
+      <button class="btn primary" type="button" id="refreshBtn">↻ Consultar últimos dados</button>
+      <a class="btn" target="_blank" rel="noopener noreferrer" href="https://github.com/veloraspaces0/rotation-lab-v1/actions/workflows/rotation-lab-v4-1.yml">▶ Iniciar / acompanhar workflow</a>
+    </div>
+    <div id="stateStatus" class="statusline" role="status">Lendo registro público do GitHub...</div>
+    <div id="updateInfo" class="muted" style="font-size:12px">O GitHub tenta três execuções por período de 4h. O iPhone apenas consulta os resultados, sem operar.</div>
+  </section>
+  <div class="metrics">
+    <div class="metric"><div class="label">V4 · Patrimônio virtual</div><div class="big" id="equity">R$ 50,00</div><div class="sub" id="equityReturn">Ainda não iniciado</div></div>
+    <div class="metric"><div class="label">Manter BTC · com custos</div><div class="big" id="btc">—</div><div class="sub" id="btcReturn">Sem referência inicial</div></div>
+    <div class="metric"><div class="label">100% em caixa</div><div class="big" id="cash">R$ 50,00</div><div class="sub">Sem operações ou rendimento</div></div>
+    <div class="metric"><div class="label">Queda desde o pico · V4</div><div class="big" id="drawdown">—</div><div class="sub">Freio da carteira, não garantido</div></div>
+  </div>
+  <section class="section">
+    <div class="eyebrow">01 / LINHA DO TEMPO</div>
+    <h2>Comparação prospectiva</h2>
+    <p class="muted">Cada ponto corresponde a uma observação realmente gravada. Não há curvas retroativas. BTC inclui custos estimados de compra e venda.</p>
+    <div class="legend">
+      <span><i style="background:#66e4b6"></i>V4</span>
+      <span><i style="background:#7daffa"></i>Manter BTC</span>
+      <span><i style="background:#f4c778"></i>Caixa</span>
+    </div>
+    <div class="chartbox"><canvas id="equityChart" aria-label="Evolução prospectiva de capital simulado, BTC e caixa"></canvas></div>
+    <div class="mini-grid">
+      <div class="tile"><strong>Última decisão</strong><span id="lastDecision" class="muted">Aguardando primeira execução.</span></div>
+      <div class="tile"><strong>Posição virtual atual</strong><span id="position" class="muted">Sem posição.</span></div>
+    </div>
+  </section>
+  <section class="section">
+    <div class="eyebrow">02 / AUDITORIA</div>
+    <h2>Registro cronológico</h2>
+    <p class="muted">Eventos de candles novos, com horário UTC, tipo de decisão, patrimônio e encadeamento SHA-256. O GitHub mantém commits para inspeção; o hash não substitui uma assinatura digital.</p>
+    <div class="statusline" id="auditStatus">Aguardando verificação.</div>
+    <div class="gridline">
+      <div class="tile"><strong id="eventCount">0 eventos</strong><small class="muted">Registro acumulado</small></div>
+      <div class="tile"><strong id="tradeCount">0 saídas</strong><small class="muted">Posições encerradas</small></div>
+      <div class="tile"><strong id="eventTime">—</strong><small class="muted">Último registro UTC</small></div>
+    </div>
+    <div class="scroll">
+      <table aria-label="Últimos eventos do teste V4">
+        <thead><tr><th>Registro UTC</th><th>Decisão</th><th>V4</th><th>BTC</th><th>Motivo</th></tr></thead>
+        <tbody id="eventRows"><tr><td colspan="5">Aguardando eventos.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <a class="btn" target="_blank" rel="noopener noreferrer" href="https://github.com/veloraspaces0/rotation-lab-v1/blob/main/v4-1/state.json">Ver JSON e histórico de commits</a>
+      <a class="btn" target="_blank" rel="noopener noreferrer" href="https://github.com/veloraspaces0/rotation-lab-v1/actions">Ver execuções do GitHub Actions</a>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="eyebrow">03 / PESQUISA SEM EXECUÇÃO</div>
+    <h2>Registro-sombra dos cinco ativos</h2>
+    <p class="muted">BTC, ETH, SOL, BNB e XRP são observados mesmo quando há freio, cooldown ou mínimo de ordem. Retornos futuros são acrescentados <strong>somente quando os respectivos candles fecham</strong>.</p>
+    <div class="gridline">
+      <div class="tile"><strong id="shadowCount">0 observações</strong><small class="muted">Sinais de todos os ativos</small></div>
+      <div class="tile"><strong id="shadowEligible">0 elegíveis</strong><small class="muted">Filtros de entrada confirmados</small></div>
+      <div class="tile"><strong id="shadowSettled">0 resultados maduros</strong><small class="muted">Horizontes 1, 3, 6 e 12 candles</small></div>
+    </div>
+    <div class="scroll">
+      <table aria-label="Estudo de retornos prospectivos por horizonte">
+        <thead><tr><th>Horizonte</th><th>Sinais elegíveis</th><th>Retorno líquido teórico médio</th><th>Todos os ativos</th><th>Limitação</th></tr></thead>
+        <tbody id="shadowRows"><tr><td colspan="5">Aguardando resultados prospectivos.</td></tr></tbody>
+      </table>
+    </div>
+    <p class="muted" style="margin-top:10px" id="shadowNote">Retornos teóricos close-to-close não são ordens executáveis. Sinais próximos são correlacionados e não equivalem a observações independentes.</p>
+  </section>
+  <section class="section">
+    <div class="eyebrow">04 / QUALIDADE DA COLETA</div>
+    <h2>Preços auditados e latência</h2>
+    <div class="gridline">
+      <div class="tile"><strong id="qualitySource">—</strong><small class="muted">Fonte pública consultada</small></div>
+      <div class="tile"><strong id="qualityLag">—</strong><small class="muted">Atraso após o último candle fechado</small></div>
+      <div class="tile"><strong id="qualityStatus">Aguardando</strong><small class="muted">Ticker duplo, livro e minuto</small></div>
+    </div>
+    <p class="muted" id="freezeStatus" style="margin-top:11px">O marco inicial congela os hashes da lógica, do coletor, do workflow e da configuração.</p>
+    <div class="note">A validação usa endpoints diferentes da mesma Binance, não provedores independentes. Movimentos reais extremos podem ser bloqueados por segurança. O freio continua permanente na carteira protegida; os sinais-sombra continuam sendo observados.</div>
+  </section>
+  <section class="section">
+    <div class="eyebrow">05 / INÍCIO E REGRAS FIXAS</div>
+    <h2>Como funciona o monitor</h2>
+    <div class="gridline">
+      <div class="tile"><strong>1. Ativar</strong><p class="muted">Em GitHub Actions, abra “Rotation Lab V4.1 - Paper Forward” e selecione “Run workflow”. Se a primeira execução falhar, consulte os logs.</p></div>
+      <div class="tile"><strong>2. Registrar</strong><p class="muted">A primeira execução bem-sucedida cria só o marco inicial. Depois, a rotina tenta registrar uma observação a cada 4 horas.</p></div>
+      <div class="tile"><strong>3. Analisar</strong><p class="muted">Volte aqui para consultar. No ChatGPT, diga “Analise V4”: consigo ler o mesmo JSON no seu repositório.</p></div>
+    </div>
+    <details><summary>Ver regras congeladas da V4</summary>
+      <p style="margin-top:12px">Capital de R$ 50 virtuais; alocação de até 65% do caixa na compra; mínimo ilustrativo de R$ 30; meta de 2%; confirmação em 3 candles fechados; filtros de tendência BTC e moeda; stop estimado de 2,5% a 5%; espera de 12 candles após venda; freio permanente após queda acumulada de 6% do pico. Custos estimados de 0,1% de taxa mais 0,05% de slippage por lado.</p>
+      <p class="muted">O motor congela um hash da lógica e da configuração no marco inicial. Uma modificação posterior impede novas operações até que seja criada outra versão, evitando mudanças silenciosas de estratégia.</p>
+    </details>
+    <div class="note">Os dados públicos não representam execução real. O saldo em R$ é apenas uma unidade contábil: não há conversão USDT/BRL, impostos, execução real, livro de ordens ou garantias de perda limitada. Se o GitHub Actions atrasar ou a API falhar, nenhuma ordem fictícia é preenchida retroativamente.</div>
+  </section>
+  <footer>Rotation Lab V4.1 · Protótipo educacional independente · Binance Spot Market Data pública e somente leitura · GitHub Actions pode atrasar, falhar ou ser desabilitado após inatividade no repositório público. Este painel apenas consulta um histórico público: não observa sua conta e não opera criptomoedas.</footer>
+</main>
+<script src="./app.js?v=1"></script>
+</body>
+</html>
