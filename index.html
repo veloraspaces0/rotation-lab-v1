@@ -151,7 +151,7 @@
   function benchmark(data,p,indices){const cost=p.fee+p.slip,first=indices[0],open=data.BTC[first].o,units=p.capital*(1-cost)/open;const curve=indices.map(i=>units*data.BTC[i].c*(1-cost));return {curve,final:curve.at(-1),return:(curve.at(-1)/p.capital-1)*100}}
   function setRunStatus(t,error=false){$('runStatus').textContent=t;$('runStatus').style.color=error?'#fa8d96':'#a4c6bb'}
   function run(){if(!data)return;const p=readParams();if(!SYMBOLS.every(s=>Array.isArray(data[s])&&data[s].length>p.lookback+10))return setRunStatus('Dados insuficientes',true);
-    try{const rot=simulate(data,p,'rotativo'),con=simulate(data,p,'conservador'),hold=benchmark(data,p,rot.index);const active=mode==='rotativo'?rot:con;latestResults={rot,con,hold,active,p};render();if(p.capital<p.minOrder){setRunStatus('Capital inferior ao mínimo simulado por ordem. Nenhuma compra será executada.',true)}else{setRunStatus('Simulação concluída. '+data.BTC.length+' candles · '+(source==='demo'?'dados fictícios':'dados públicos históricos')+'.')}}
+    try{const rot=simulate(data,p,'rotativo'),con=simulate(data,p,'conservador'),hold=benchmark(data,p,rot.index);const active=mode==='rotativo'?rot:con;latestResults={rot,con,hold,active,p};render();window.dispatchEvent(new CustomEvent('rotation-lab-results',{detail:{rot,con,hold,active,p,mode,source,startUTC:new Date(data.BTC[rot.index[0]].t).toISOString(),endUTC:new Date(data.BTC.at(-1).t).toISOString(),candles:rot.index.length}}));if(p.capital<p.minOrder){setRunStatus('Capital inferior ao mínimo simulado por ordem. Nenhuma compra será executada.',true)}else{setRunStatus('Simulação concluída. '+data.BTC.length+' candles · '+(source==='demo'?'dados fictícios':'dados públicos históricos')+'.')}}
     catch(e){console.error(e);setRunStatus('Erro: '+String(e.message),true)}
   }
   function render(){if(!latestResults)return;const {rot,con,hold,active,p}=latestResults;
@@ -214,5 +214,6 @@
   window.RotationLabV1={simulate,benchmark,demoData,getScore,readParams,run,loadPublic:live};
 })();
 </script>
+<script src="./report-sync.js?v=2" defer></script>
 </body>
 </html>
