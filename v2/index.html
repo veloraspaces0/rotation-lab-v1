@@ -47,6 +47,20 @@
     .v2-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
     .v2-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:13px}
     .v2-actions .button{min-height:40px}
+
+    /* Diagnóstico detalhado: cada operação da V2 */
+    .v2-diagnostics{margin-top:16px;padding:14px;border:1px solid #2b414b;border-radius:13px;background:#0a1821}
+    .v2-diag-title{font-size:17px;font-weight:800;margin:4px 0 6px}
+    .v2-diag-summary{font-size:13px;color:#c6d7df;line-height:1.6;margin:12px 0}
+    .v2-diag-note{font-size:12px;color:#a6b8c2;line-height:1.55}
+    .v2-diag-table{width:100%;min-width:860px;border-collapse:collapse;font-size:12px}
+    .v2-diag-table th,.v2-diag-table td{border-bottom:1px solid #223742;padding:9px 10px;vertical-align:top}
+    .v2-diag-table th{color:#aec0c9;text-align:left;background:#132530;font-size:11px;white-space:nowrap}
+    .v2-diag-table td:nth-child(1),.v2-diag-table td:nth-child(4),.v2-diag-table td:nth-child(6){white-space:nowrap}
+    .v2-diag-table td:nth-child(5){min-width:170px}
+    .v2-diag-table tr:last-child td{border-bottom:0}
+    .v2-diag-table td:nth-child(6),.v2-diag-table td:nth-child(7){text-align:right}
+
     .v2-foot{margin-top:14px;padding:11px 13px;background:#242219;border:1px solid #554d33;border-radius:10px;font-size:12px;line-height:1.55;color:#dbcba8}
     .v2-signal{font-size:12px;color:#bed3db;margin-top:9px}
     @media(max-width:750px){.v2-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -97,6 +111,23 @@
     </div>
     <div class="v2-signal" id="v2Signal">Aguardando comparação.</div>
     <div class="v2-meta" id="v2Operations" style="margin-top:9px">Aguardando operações.</div>
+
+    <section class="v2-diagnostics" aria-label="Diagnóstico de operações V2">
+      <div class="section-id">DIAGNÓSTICO DAS OPERAÇÕES / V2</div>
+      <h3 class="v2-diag-title">Por que cada posição foi encerrada?</h3>
+      <p class="v2-diag-note">Histórico completo de posições encerradas no teste atual. Motivos e valores calculados pelo simulador, não operações reais.</p>
+      <div class="v2-diag-summary" id="v2DiagnosticsSummary">Aguardando a simulação.</div>
+      <div class="v2-table-wrap">
+        <table class="v2-diag-table" aria-label="Histórico detalhado de posições encerradas V2">
+          <thead><tr><th># / Moeda</th><th>Compra (UTC)</th><th>Venda (UTC)</th><th>Duração</th><th>Motivo da saída</th><th>P&L líquido*</th><th>Retorno líquido</th></tr></thead>
+          <tbody id="v2TradeBody"><tr><td colspan="7">Aguardando a simulação.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="v2-diag-note" id="v2DiagnosticsBreakdown" style="margin-top:10px"></div>
+      <div class="v2-diag-note" id="v2OpenTrade" style="margin-top:8px"></div>
+      <div class="v2-actions"><button class="button outline" type="button" id="v2CsvBtn">Baixar operações CSV</button></div>
+      <p class="v2-diag-note" style="margin-top:9px">* P&L líquido inclui custos estimados de compra e venda. O símbolo R$ é apenas a unidade contábil virtual; preços de criptomoedas são históricos em USDT, sem conversão cambial.</p>
+    </section>
     <div class="v2-foot"><strong>Regras V2 pré-definidas:</strong> alocação de até 70% do caixa na entrada (pode variar após mudanças de preço), reserva em caixa e stop de 3% na posição, 12 candles de espera, troca somente com vantagem de 2 pontos e sem perda na posição. Só entra quando BTC está acima da média de 72 candles e a média de 36 supera a de 72. Acionamento de proteção após queda de 8% do patrimônio, com pausa de 48 candles. A execução é na abertura seguinte, então gaps e custos podem causar perdas maiores. O mínimo ilustrativo por ordem continua configurável.</div>
     <div class="v2-actions">
       <button class="button primary" type="button" id="v2ReportBtn">Enviar resultado ao GitHub</button>
