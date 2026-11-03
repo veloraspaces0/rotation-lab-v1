@@ -61,6 +61,7 @@ function analyze(raw,p,origin){
       ' Isso não comprova desempenho futuro.';
     $('v2Status').textContent='Simulação concluída. Os parâmetros da V2 são fixos para preservar a comparação; alterações nas configurações da V1 afetam os parâmetros compartilhados.';
     drawChart(r);
+    renderDiagnostic(r);
   }catch(e){
     latest=null;
     $('v2Status').textContent='Erro na comparação V2: '+String(e.message||e);
@@ -112,6 +113,76 @@ function drawChart(r){
   const t=date(r.period.to),tw=ctx.measureText(t).width;
   ctx.fillText(t,graph.x1-tw,graph.y1+20);
 }
+
+function escapeText(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function whenUTC(s){
+  return new Date(s).toLocaleString('pt-BR',{timeZone:'UTC',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' UTC';
+}
+function diagnosis(r){
+  const trades=r.v2.completedTrades||[];
+  const groups={};
+  const byCoin={};
+  for(const t of trades){
+    let reason='Outra saída';
+    if(t.exitAction==='STOP')reason='Stop de posição';
+    else if(t.exitAction==='PAUSA')reason='Proteção da carteira';
+    else if(t.exitReason.startsWith('Filtro de tendência'))reason='Filtro de tendência';
+    else if(t.exitReason.startsWith('Alvo'))reason='Meta de lucro';
+    else if(t.exitReason.startsWith('Troca'))reason='Troca de moeda';
+    if(!groups[reason])groups[reason]={count:0,pnl:0};
+    groups[reason].count++;groups[reason].pnl+=t.netPnLVirtual;
+    if(!byCoin[t.asset])byCoin[t.asset]={count:0,pnl:0};
+    byCoin[t.asset].count++;byCoin[t.asset].pnl+=t.netPnLVirtual;
+  }
+  const pnlClosed=trades.reduce((acc,t)=>acc+t.netPnLVirtual,0);
+  const winCount=trades.filter(t=>t.netPnLVirtual>=0).length;
+  const avgHours=trades.length?trades.reduce((acc,t)=>acc+t.hoursHeld,0)/trades.length:0;
+  const worst=trades.length?trades.reduce((a,b)=>a.netPnLVirtual<=b.netPnLVirtual?a:b):null;
+  return {trades,groups,byCoin,pnlClosed,winCount,avgHours,worst};
+}
+function renderDiagnostic(result){
+  const d=diagnosis(result);
+  const trades=d.trades;
+  $('v2DiagnosticsSummary').textContent=trades.length+' posições encerradas · '+d.winCount+' no zero ou com lucro · '+
+    (trades.length-d.winCount)+' com prejuízo · P&L realizado '+money(d.pnlClosed)+
+    ' · duração média '+plain(d.avgHours)+' horas.';
+  const body=$('v2TradeBody');
+  if(!trades.length){
+    body.innerHTML='<tr><td colspan="7">Nenhuma posição encerrada nessa janela.</td></tr>';
+  }else{
+    body.innerHTML=trades.map((t,i)=>'<tr><td><strong>#'+(i+1)+' · '+escapeText(t.asset)+'</strong></td>'+
+      '<td>'+whenUTC(t.entryUTC)+'</td><td>'+whenUTC(t.exitUTC)+'</td>'+
+      '<td>'+t.hoursHeld+'h</td>'+
+      '<td>'+escapeText(t.exitReason)+'</td>'+
+      '<td><span class="'+(t.netPnLVirtual<0?'v2-down':'v2-up')+'">'+money(t.netPnLVirtual)+'</span></td>'+
+      '<td>'+signedCell(t.netReturnPct)+'</td></tr>').join('');
+  }
+  const reasons=Object.entries(d.groups).sort((a,b)=>a[1].pnl-b[1].pnl);
+  const byCoin=Object.entries(d.byCoin).sort((a,b)=>a[1].pnl-b[1].pnl);
+  $('v2DiagnosticsBreakdown').textContent='Motivos: '+
+    (reasons.length?reasons.map(([reason,v])=>reason+' '+v.count+'× ('+money(v.pnl)+')').join(' · '):'sem saídas')+
+    '. Por moeda: '+(byCoin.length?byCoin.map(([s,v])=>s+' '+v.count+'× ('+money(v.pnl)+')').join(' · '):'sem saídas')+'.';
+  $('v2OpenTrade').textContent=result.v2.openTrade?
+    'Existe uma posição ainda aberta: '+result.v2.openTrade.asset+'. O P&L não realizado não aparece na soma de posições encerradas.':
+    'Nenhuma posição aberta no último candle.';
+}
+function csvTrades(){
+  if(!latest){$('v2ReportStatus').textContent='Rode a simulação antes de exportar.';return;}
+  const cols=['moeda','data_compra_utc','data_venda_utc','preco_compra_usdt','preco_venda_usdt',
+    'duracao_horas','motivo_compra','motivo_venda','capital_aplicado_virtual',
+    'pnl_liquido_virtual','retorno_liquido_pct','custos_estimados_virtuais'];
+  const rows=[cols,...latest.v2.completedTrades.map(t=>[
+    t.asset,t.entryUTC,t.exitUTC,t.entryPrice,t.exitPrice,t.hoursHeld,
+    t.entryReason,t.exitReason,t.investedVirtual,t.netPnLVirtual,t.netReturnPct,t.estimatedTotalCostsVirtual])];
+  const csv='\uFEFF'+rows.map(row=>row.map(v=>'"'+String(v==null?'':v).replaceAll('"','""')+'"').join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const link=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=link;a.download='rotation_lab_v2_operacoes.csv';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(link),1000);
+  $('v2ReportStatus').textContent='Arquivo CSV preparado com todas as posições encerradas neste teste.';
+}
+
 function makeReport(){
   if(!latest)return null;
   const r=latest;
@@ -139,6 +210,19 @@ function makeReport(){
     V2Operations:{closed:r.v2.closed,wins:r.v2.wins,swaps:r.v2.swaps,
       circuitBreaks:r.v2.brakes,blockedSignals:r.v2.blockedSignals,
       costsEstimatedBRL:Number(r.v2.costs.toFixed(3)),exposurePeakPct:Number(r.v2.exposurePeak.toFixed(3))},
+    tradeDiagnostics:(()=>{const d=diagnosis(r);return {
+      closedCount:d.trades.length,zeroOrWinning:d.winCount,
+      losing:d.trades.length-d.winCount,closedPnLVirtual:Number(d.pnlClosed.toFixed(3)),
+      averageHoldingHours:Number(d.avgHours.toFixed(1)),
+      exitReasons:Object.fromEntries(Object.entries(d.groups).map(([k,v])=>[k,{count:v.count,pnlVirtual:Number(v.pnl.toFixed(3))}])),
+      byAsset:Object.fromEntries(Object.entries(d.byCoin).map(([k,v])=>[k,{count:v.count,pnlVirtual:Number(v.pnl.toFixed(3))}])),
+      openPosition:r.v2.openTrade?{asset:r.v2.openTrade.asset,entryUTC:r.v2.openTrade.entryUTC}:null
+    }})(),
+    tradeLedgerColumns:['asset','entryUTC','exitUTC','hoursHeld','exitAction','exitReason','netPnLVirtual','netReturnPct','estimatedCostsVirtual'],
+    tradeLedger:r.v2.completedTrades.map(t=>[
+      t.asset,t.entryUTC,t.exitUTC,t.hoursHeld,t.exitAction,t.exitReason,
+      Number(t.netPnLVirtual.toFixed(3)),Number(t.netReturnPct.toFixed(3)),
+      Number(t.estimatedTotalCostsVirtual.toFixed(3))]),
     caveats:'Simulacao educativa. Taxas estimadas. O valor R$ é unidade contabil ilustrativa sem USD/BRL. Backtest nao comprova lucro futuro; limites de perdas podem ser excedidos por gaps.'
   };
 }
@@ -148,8 +232,13 @@ function publish(){
   const title='[Rotation Lab V2] '+(source==='demo'?'DEMO':'BINANCE')+' · '+data.createdAtUTC.slice(0,16);
   const body='Relatório voluntário do Rotation Lab V2 (capital virtual, sem ordens reais):\n\n'+JSON.stringify(data,null,2);
   $('v2ReportStatus').textContent='Abrindo GitHub. Revise e toque em Submit new issue para enviar o relatório.';
-  window.location.assign('https://github.com/veloraspaces0/rotation-lab-v1/issues/new?title='+
-    encodeURIComponent(title)+'&body='+encodeURIComponent(body));
+  const url='https://github.com/veloraspaces0/rotation-lab-v1/issues/new?title='+
+    encodeURIComponent(title)+'&body='+encodeURIComponent(body);
+  if(url.length>8500){
+    $('v2ReportStatus').textContent='Relatório longo demais para preencher via link. Toque em Copiar relatório e cole na descrição de uma nova issue no GitHub.';
+    return;
+  }
+  window.location.assign(url);
 }
 async function copy(){
   const data=makeReport();
@@ -161,6 +250,7 @@ async function copy(){
 }
 $('v2ReportBtn').addEventListener('click',publish);
 $('v2CopyBtn').addEventListener('click',copy);
+$('v2CsvBtn').addEventListener('click',csvTrades);
 window.addEventListener('rotation-lab-v2-data',e=>analyze(e.detail.data,e.detail.p,e.detail.source));
 window.addEventListener('resize',()=>{if(latest)drawChart(latest)});
 if(window.RotationLabV1?.run)window.RotationLabV1.run();
