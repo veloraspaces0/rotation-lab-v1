@@ -1,0 +1,2175 @@
+ROTATION LAB V4.1 — PACOTE COMPLETO DE CODIGO-FONTE PARA AUDITORIA INDEPENDENTE (GEMINI)
+Repositório original: https://github.com/veloraspaces0/rotation-lab-v1
+Gerado a partir dos arquivos consultados diretamente via conexão GitHub.
+Número de arquivos incluídos: 9.
+Observação: somente cópia de leitura do código público; sem credenciais ou chaves privadas.
+
+INSTRUÇÕES PARA O AUDITOR:
+1. Analise os arquivos reais abaixo e cite nome de arquivo e linhas (cada arquivo está numerado).
+2. Confirme se os 16 testes automatizados são suficientes; proponha novos casos reproduzíveis.
+3. Não altere os arquivos do GitHub.
+4. Distingua problemas provados de suspeitas, com caso mínimo reproduzível.
+5. Verifique especialmente: cálculos de custos e patrimônio, validação de cotação e sinais velhos; integridade dos hashes, cron e concorrência; registro-sombra, retornos de 1/3/6/12 barras, vieses e benchmarks.
+6. Considere que tudo é SIMULADO; nenhuma operação real é executada.
+7. Inspecione state.json e não afirme funcionamento contínuo quando há apenas baseline.
+
+LISTA DE ARQUIVOS:
+1. v4-1/core.js (Git blob SHA d0ca9c8a09ecf726182e9ff0363fbc8c49d0faf5)
+2. v4-1/runner.cjs (Git blob SHA ff37baf0e2f375108db5f7dced931877a7ed7a15)
+3. v4-1/tests.cjs (Git blob SHA b9ece7c556fe18c17b14168a58cc11779310cd9c)
+4. v4-1/analysis.js (Git blob SHA e2b694e577c29eba8584e9ba6130218d63f8b6e7)
+5. v4-1/app.js (Git blob SHA 22ce84da1e9b6d7eb581015c2023336d844a579b)
+6. v4-1/index.html (Git blob SHA 3f4677c469f119b71fc9be6df36f7c957f0f5540)
+7. v4-1/state.json (Git blob SHA adfe34d533632e78333be12155c678d94f976e38)
+8. .github/workflows/rotation-lab-v4-1.yml (Git blob SHA 2838de0c9d70fc23836cfc6501058c77322d32f1)
+9. v4-1/README.md (Git blob SHA 20f9492d5c563359bbbc2bf7d300bbd78802ceea)
+
+===== INÍCIO DOS ARQUIVOS INTEGRAIS =====
+
+
+========== ARQUIVO 1/9 | INÍCIO: v4-1/core.js | 337 linhas ==========
+0001 | /* Rotation Lab V4.1 — auditoria prospectiva independente; V4 mantida intacta.
+0002 |  * Cada observação usa somente candles de 4h fechados e uma cotação consultada na execução.
+0003 |  * Nunca cria operações retroativas. Eventos encadeados via SHA-256, auditáveis nos commits.
+0004 |  */
+0005 | 'use strict';
+0006 | const {createHash}=require('node:crypto');
+0007 | const ASSETS=['BTC','ETH','SOL','BNB','XRP'];
+0008 | const BAR_MS=4*3600000;
+0009 | const DEFAULT_CONFIG=Object.freeze({
+0010 |   strategyId:'rotation-v4-1-audited-2026-11',initialCapitalVirtual:50,
+0011 |   maxExposure:0.65,riskBudget:0.03,minVirtualOrder:30,
+0012 |   feePctPerSide:0.1,slippagePctPerSide:0.05,
+0013 |   btcFast:36,btcSlow:72,assetFast:12,assetSlow:36,
+0014 |   confirmationBars:3,lookback:12,minimumStrength:1,
+0015 |   maxExtension:0.045,volatilityBars:20,volatilityStopFactor:2.5,
+0016 |   minimumStop:0.025,maximumStop:0.05,takeProfit:0.02,
+0017 |   cooldownBars:12,circuitDrawdown:0.06
+0018 | });
+0019 | const round=(n,d=8)=>Number(Number(n).toFixed(d));
+0020 | const iso=t=>new Date(t).toISOString();
+0021 | function hash(value){return createHash('sha256').update(value).digest('hex')}
+0022 | function eventHash(e){
+0023 |   return hash(JSON.stringify({seq:e.seq,prevHash:e.prevHash,type:e.type,
+0024 |     recordedAtUTC:e.recordedAtUTC,candleOpenMs:e.candleOpenMs,payload:e.payload}));
+0025 | }
+0026 | function verify(state){
+0027 |   if(!state||state.schema!==1||!Array.isArray(state.events))throw Error('Estado inválido');
+0028 |   let parent='GENESIS';
+0029 |   for(let i=0;i<state.events.length;i++){
+0030 |     const e=state.events[i];
+0031 |     if(e.seq!==i+1||e.prevHash!==parent||e.hash!==eventHash(e))
+0032 |       throw Error('Integridade da cadeia comprometida no evento '+(i+1));
+0033 |     if(i>0&&e.candleOpenMs<=state.events[i-1].candleOpenMs)
+0034 |       throw Error('Candle não avança no evento '+(i+1));
+0035 |     parent=e.hash;
+0036 |   }
+0037 |   if(state.events.length&&state.events[0].type!=='BASELINE')
+0038 |     throw Error('Falta o marco inicial');
+0039 |   return true;
+0040 | }
+0041 | function append(state,type,recordedAtUTC,candleOpenMs,payload){
+0042 |   const last=state.events.at(-1);
+0043 |   const ev={seq:state.events.length+1,prevHash:last?.hash||'GENESIS',
+0044 |     type,recordedAtUTC,candleOpenMs,payload};
+0045 |   ev.hash=eventHash(ev);
+0046 |   state.events.push(ev);
+0047 |   return ev;
+0048 | }
+0049 | function sma(data,s,i,n){
+0050 |   if(i<n-1)return NaN;
+0051 |   let total=0;for(let k=i-n+1;k<=i;k++)total+=data[s][k].c;
+0052 |   return total/n;
+0053 | }
+0054 | function vol(data,s,i,n){
+0055 |   if(i<n)return NaN;
+0056 |   let sum=0,sq=0;
+0057 |   for(let k=i-n+1;k<=i;k++){
+0058 |     const r=Math.log(data[s][k].c/data[s][k-1].c);
+0059 |     if(!Number.isFinite(r))return NaN;
+0060 |     sum+=r;sq+=r*r;
+0061 |   }
+0062 |   return Math.sqrt(Math.max(0,sq/n-(sum/n)**2));
+0063 | }
+0064 | function btcOK(data,i,c){
+0065 |   const f=sma(data,'BTC',i,c.btcFast),s=sma(data,'BTC',i,c.btcSlow);
+0066 |   return Number.isFinite(f)&&Number.isFinite(s)&&f>s*1.002&&data.BTC[i].c>s;
+0067 | }
+0068 | // Não usar a barreira contra compras esticadas como motivo de venda.
+0069 | function coinExitHealthy(data,sym,i,c){
+0070 |   const fast=sma(data,sym,i,c.assetFast),slow=sma(data,sym,i,c.assetSlow);
+0071 |   const price=data[sym][i].c;
+0072 |   return Number.isFinite(fast)&&Number.isFinite(slow)&&fast>slow&&price>fast*0.998;
+0073 | }
+0074 | function coinOK(data,sym,i,c){
+0075 |   const fast=sma(data,sym,i,c.assetFast),slow=sma(data,sym,i,c.assetSlow);
+0076 |   const price=data[sym][i].c;
+0077 |   return Number.isFinite(fast)&&Number.isFinite(slow)&&fast>slow&&
+0078 |     price>fast&&price<=fast*(1+c.maxExtension);
+0079 | }
+0080 | function strength(data,sym,i,c){
+0081 |   if(i<c.lookback)return -Infinity;
+0082 |   const a=data[sym][i].c,b=data[sym][i-c.lookback].c;
+0083 |   const sigma=vol(data,sym,i,c.volatilityBars);
+0084 |   if(!(a>0&&b>0&&Number.isFinite(sigma)))return -Infinity;
+0085 |   return 100*Math.log(a/b)-40*sigma;
+0086 | }
+0087 | function entrySignal(data,c){
+0088 |   const last=data.BTC.length-1;
+0089 |   for(let back=0;back<c.confirmationBars;back++)
+0090 |     if(!btcOK(data,last-back,c))return null;
+0091 |   const candidates=[];
+0092 |   for(const asset of ASSETS){
+0093 |     let eligible=true;
+0094 |     for(let back=0;back<c.confirmationBars;back++){
+0095 |       const k=last-back;
+0096 |       if(!coinOK(data,asset,k,c)||strength(data,asset,k,c)<c.minimumStrength){
+0097 |         eligible=false;break;
+0098 |       }
+0099 |     }
+0100 |     if(eligible)candidates.push({asset,strength:strength(data,asset,last,c),
+0101 |       vol:vol(data,asset,last,c.volatilityBars)});
+0102 |   }
+0103 |   candidates.sort((a,b)=>b.strength-a.strength);
+0104 |   return candidates[0]||null;
+0105 | }
+0106 | 
+0107 | const HORIZONS=[1,3,6,12];
+0108 | const safe=x=>Number.isFinite(x)?round(x,7):null;
+0109 | function buildInputs(market,c){
+0110 |   const data=market.candles,last=data.BTC.length-1;
+0111 |   const regime=Array.from({length:c.confirmationBars},(_,j)=>btcOK(data,last-j,c));
+0112 |   const indicators={};
+0113 |   for(const asset of ASSETS){
+0114 |     const candles=data[asset];
+0115 |     const closes=candles.map(row=>round(row.c,8));
+0116 |     const s=Array.from({length:c.confirmationBars},(_,j)=>{
+0117 |       const i=last-j;
+0118 |       return {assetTrend:coinOK(data,asset,i,c),strengthOK:strength(data,asset,i,c)>=c.minimumStrength};
+0119 |     });
+0120 |     indicators[asset]={
+0121 |       candleClose:closes.at(-1),
+0122 |       smaFast:safe(sma(data,asset,last,c.assetFast)),
+0123 |       smaSlow:safe(sma(data,asset,last,c.assetSlow)),
+0124 |       momentum:safe(strength(data,asset,last,c)),
+0125 |       volatility:safe(vol(data,asset,last,c.volatilityBars)),
+0126 |       validLast3:s.every(item=>item.assetTrend&&item.strengthOK),
+0127 |       passedEntry:regime.every(Boolean)&&s.every(item=>item.assetTrend&&item.strengthOK),
+0128 |       candleSignals:s,
+0129 |       closeHistory:closes
+0130 |     };
+0131 |   }
+0132 |   return {lastCandleUTC:new Date(market.candleOpenMs).toISOString(),
+0133 |     firstCandleUTC:new Date(data.BTC[0].t).toISOString(),
+0134 |     btcRegimeLast3:regime,btcSmaFast:safe(sma(data,'BTC',last,c.btcFast)),
+0135 |     btcSmaSlow:safe(sma(data,'BTC',last,c.btcSlow)),
+0136 |     indicators,quoteQuality:market.quality,quotes:market.quotes};
+0137 | }
+0138 | function forwardResolutions(state,market,c){
+0139 |   const events=state.events,t=market.candleOpenMs,cost=(c.feePctPerSide+c.slippagePctPerSide)/100;
+0140 |   const matured=[];
+0141 |   for(const h of HORIZONS){
+0142 |     const origin=events.find(e=>e.candleOpenMs===t-h*BAR_MS&&e.payload?.shadow?.emitted);
+0143 |     if(!origin)continue;
+0144 |     for(const signal of origin.payload.shadow.emitted){
+0145 |       const target=market.candles[signal.asset].at(-1).c;
+0146 |       const gross=100*(target/signal.close-1);
+0147 |       const net=100*((target/signal.close)*Math.pow(1-cost,2)-1);
+0148 |       matured.push({originSeq:origin.seq,asset:signal.asset,horizonBars:h,
+0149 |         originCandleUTC:new Date(origin.candleOpenMs).toISOString(),
+0150 |         theoreticalGrossPct:round(gross,5),theoreticalNetPct:round(net,5),
+0151 |         eligibleAtOrigin:signal.eligible,
+0152 |         note:'Sinal de pesquisa: close-to-close, não negociável no passado; custos hipotéticos'});
+0153 |     }
+0154 |   }
+0155 |   return matured;
+0156 | }
+0157 | function shadowSignals(inputs){
+0158 |   return ASSETS.map(asset=>{
+0159 |     const a=inputs.indicators[asset];
+0160 |     return {asset,close:a.candleClose,eligible:a.passedEntry,
+0161 |       score:a.momentum,volatility:a.volatility,
+0162 |       reason:a.passedEntry?'Entrada teórica confirmada':'Filtro não satisfeito'};
+0163 |   });
+0164 | }
+0165 | 
+0166 | function clamp(x,a,b){return Math.max(a,Math.min(x,b))}
+0167 | function validateMarket(market,c){
+0168 |   const arr=ASSETS.map(s=>market.candles[s]);
+0169 |   const minCount=Math.max(c.btcSlow+5,c.assetSlow+c.confirmationBars+5,c.volatilityBars+5);
+0170 |   if(arr.some(a=>!Array.isArray(a)||a.length<minCount))throw Error('Candles insuficientes');
+0171 |   const n=arr[0].length,last=n-1,t=arr[0][last].t;
+0172 |   if(!Number.isInteger(t)||t%BAR_MS!==0)throw Error('Horário de candle inválido');
+0173 |   if(arr.some(a=>a.length!==n||a[last].t!==t))
+0174 |     throw Error('Mercados com horários desalinhados');
+0175 |   for(const s of ASSETS){
+0176 |     const q=market.quotes[s];
+0177 |     const quality=market.quality?.perAsset?.[s];
+0178 |     if(!(q>0&&Number.isFinite(q)))throw Error('Cotação inválida: '+s);
+0179 |     if(!quality||quality.validated!==true)throw Error('Preço sem validação cruzada: '+s);
+0180 |     const rel=(a,b)=>Math.abs(a-b)/Math.max(1e-8,b);
+0181 |     if(!(quality.bid>0&&quality.ask>=quality.bid&&quality.minuteClose>0&&
+0182 |       quality.tickerFirst>0&&quality.tickerSecond>0))
+0183 |       throw Error('Referências incompletas: '+s);
+0184 |     if(rel(quality.tickerSecond,q)>0.000001||
+0185 |        rel(quality.tickerFirst,q)>0.004||
+0186 |        rel((quality.bid+quality.ask)/2,q)>0.006||
+0187 |        rel(quality.minuteClose,q)>0.025||
+0188 |        quality.ask/quality.bid-1>0.01)
+0189 |       throw Error('Preço inconsistente: '+s);
+0190 |     if(!(Number.isFinite(quality.minuteAgeMs)&&quality.minuteAgeMs>=0&&quality.minuteAgeMs<=180000))
+0191 |       throw Error('Referência de minuto desatualizada: '+s);
+0192 |     for(let k=0;k<market.candles[s].length;k++){
+0193 |       const row=market.candles[s][k];
+0194 |       if(!(row.c>0&&Number.isFinite(row.c))||row.t!==t-(n-1-k)*BAR_MS)
+0195 |         throw Error('Série histórica incompleta: '+s);
+0196 |     }
+0197 |   }
+0198 |   if(market.candleOpenMs!==t)throw Error('Snapshot inconsistente');
+0199 |   if(!Number.isFinite(Date.parse(market.capturedAtUTC)))throw Error('Registro sem horário válido');
+0200 | }
+0201 | function liquidValue(account,quotes,c){
+0202 |   const fee=(c.feePctPerSide+c.slippagePctPerSide)/100;
+0203 |   return account.cash+(account.position?
+0204 |     account.units*quotes[account.position]* (1-fee):0);
+0205 | }
+0206 | function snapshotWithMetrics(a,quotes,c){
+0207 |   const cost=(c.feePctPerSide+c.slippagePctPerSide)/100;
+0208 |   const equity=liquidValue(a,quotes,c);
+0209 |   return {...a,equityVirtual:round(equity),
+0210 |     btcBenchmarkVirtual:round(a.btcUnits*quotes.BTC*(1-cost)),
+0211 |     cashBenchmarkVirtual:c.initialCapitalVirtual};
+0212 | }
+0213 | function runCycle(state,market,options={}){
+0214 |   verify(state);
+0215 |   const config={...DEFAULT_CONFIG,...(state.config||{})};
+0216 |   const coreHash=options.bundleHash||options.coreHash||'TEST_ONLY';
+0217 |   const configHash=hash(JSON.stringify(config));
+0218 |   validateMarket(market,config);
+0219 |   const t=market.candleOpenMs,now=market.capturedAtUTC;
+0220 |   const ageMs=Date.parse(now)-(t+BAR_MS);
+0221 |   if(ageMs<0)throw Error('Candle ainda não fechado');
+0222 |   const maxEntryAgeMs=90*60*1000; // não abrir posições se o agendador atrasar demais
+0223 |   const inputSnapshot=buildInputs(market,config);
+0224 |   if(Date.parse(now)<t+BAR_MS)throw Error('Tentativa de avaliar candle ainda aberto');
+0225 |   // Never backfill before the first successful invocation.
+0226 |   if(!state.events.length){
+0227 |     const cost=(config.feePctPerSide+config.slippagePctPerSide)/100;
+0228 |     const a={cash:config.initialCapitalVirtual,position:null,units:0,investedVirtual:0,
+0229 |       entryPrice:0,entryAtUTC:null,stopFraction:0,
+0230 |       cooldownUntilCandleMs:0,hardHalt:false,peakEquity:config.initialCapitalVirtual,
+0231 |       closedTrades:0,winningTrades:0,cumulativeCostsVirtual:0,
+0232 |       btcUnits:config.initialCapitalVirtual*(1-cost)/market.quotes.BTC};
+0233 |     append(state,'BASELINE',now,t,{coreHash,configHash,
+0234 |       inputSnapshot,latencyMinutes:round(ageMs/60000,2),
+0235 |       message:'Início prospectivo. Nenhum sinal ou compra anterior será calculado.',
+0236 |       quotes:market.quotes,
+0237 |       account:snapshotWithMetrics(a,market.quotes,config)});
+0238 |     return {changed:true,event:state.events.at(-1)};
+0239 |   }
+0240 |   const initial=state.events[0];
+0241 |   if(initial.payload.coreHash!==coreHash)
+0242 |     throw Error('O motor da estratégia mudou. V4 bloqueada para preservar regras congeladas. Crie nova versão.');
+0243 |   if(initial.payload.configHash!==configHash)
+0244 |     throw Error('Configuração modificada após início. Crie nova versão para preservar o histórico.');
+0245 |   const previous=state.events.at(-1);
+0246 |   if(t<=previous.candleOpenMs)return {changed:false,reason:'Candle já registrado ou anterior'};
+0247 |   const missing=Math.max(0,Math.floor((t-previous.candleOpenMs)/BAR_MS)-1);
+0248 |   const prior=previous.payload.account;
+0249 |   const a={...prior};
+0250 |   delete a.equityVirtual;delete a.btcBenchmarkVirtual;delete a.cashBenchmarkVirtual;
+0251 |   const c=config,cost=(c.feePctPerSide+c.slippagePctPerSide)/100;
+0252 |   let action={type:'HOLD',reason:'Sem condições confirmadas'};
+0253 |   const before=liquidValue(a,market.quotes,c);
+0254 |   a.peakEquity=Math.max(a.peakEquity,before);
+0255 |   const drawdown=1-before/a.peakEquity;
+0256 |   const last=market.candles.BTC.length-1;
+0257 |   const candidates=entrySignal(market.candles,c);
+0258 |   const shadow={emitted:shadowSignals(inputSnapshot),
+0259 |     matured:forwardResolutions(state,market,c)};
+0260 |   const entryIsStale=ageMs>maxEntryAgeMs;
+0261 |   const possible=candidates?{
+0262 |     asset:candidates.asset,strength:round(candidates.strength,4),
+0263 |     volatility:round(candidates.vol,6)}:null;
+0264 |   function close(reason,kind){
+0265 |     const asset=a.position;
+0266 |     const price=market.quality.perAsset[asset].bid;
+0267 |     const gross=a.units*price,received=gross*(1-cost),netPnl=received-a.investedVirtual;
+0268 |     a.cash+=received;a.cumulativeCostsVirtual+=gross*cost;
+0269 |     a.closedTrades++;if(netPnl>=0)a.winningTrades++;
+0270 |     action={type:kind,asset,reason,entryAtUTC:a.entryAtUTC,
+0271 |       entryPrice:a.entryPrice,exitPrice:price,
+0272 |       heldHours:round((Date.parse(now)-Date.parse(a.entryAtUTC))/3600000,1),
+0273 |       investedVirtual:round(a.investedVirtual,4),
+0274 |       realizedPnlVirtual:round(netPnl,4),
+0275 |       netReturnPct:round(100*netPnl/a.investedVirtual,4),
+0276 |       simulatedExitCostVirtual:round(gross*cost,4)};
+0277 |     a.position=null;a.units=0;a.investedVirtual=0;a.entryPrice=0;
+0278 |     a.entryAtUTC=null;a.stopFraction=0;
+0279 |     a.cooldownUntilCandleMs=t+c.cooldownBars*BAR_MS;
+0280 |   }
+0281 |   if(!a.hardHalt&&drawdown>=c.circuitDrawdown){
+0282 |     if(a.position)close('Freio de carteira por queda acumulada','SELL_CIRCUIT');
+0283 |     else action={type:'HALT',reason:'Freio de carteira em caixa'};
+0284 |     a.hardHalt=true;
+0285 |   }else if(a.hardHalt){
+0286 |     action={type:'HOLD',reason:'Operações bloqueadas pelo freio de carteira'};
+0287 |   }else if(a.position){
+0288 |     const marked=a.units*market.quotes[a.position]*(1-cost);
+0289 |     const positionPct=marked/a.investedVirtual-1;
+0290 |     const weakNow=!btcOK(market.candles,last,c)||!coinExitHealthy(market.candles,a.position,last,c);
+0291 |     const weakPrev=!btcOK(market.candles,last-1,c)||!coinExitHealthy(market.candles,a.position,last-1,c);
+0292 |     if(positionPct<=-a.stopFraction)close('Stop ajustado à volatilidade','SELL_STOP');
+0293 |     else if(positionPct>=c.takeProfit)close('Meta líquida da posição','SELL_TARGET');
+0294 |     else if(weakNow&&weakPrev)close('Dois candles de enfraquecimento','SELL_TREND');
+0295 |     else action={type:'HOLD',asset:a.position,reason:'Manter posição; nenhuma saída sinalizada'};
+0296 |   }else if(entryIsStale){
+0297 |     action={type:'SKIP_STALE',reason:'Compra bloqueada: sinal avaliado após 90 minutos do candle',
+0298 |       delayMinutes:round(ageMs/60000,2)};
+0299 |   }else if(t<a.cooldownUntilCandleMs){
+0300 |     action={type:'HOLD',reason:'Aguardando cooldown entre posições'};
+0301 |   }else if(candidates){
+0302 |     const stop=clamp(c.volatilityStopFactor*candidates.vol,c.minimumStop,c.maximumStop);
+0303 |     const cash0=a.cash;
+0304 |     const budget=Math.min(cash0,cash0*c.maxExposure,c.initialCapitalVirtual*c.riskBudget/stop);
+0305 |     if(budget+1e-8<c.minVirtualOrder){
+0306 |       action={type:'SKIP',reason:'Sinal ignorado: orçamento abaixo do mínimo simulado',
+0307 |         asset:candidates.asset,budgetVirtual:round(budget,4)};
+0308 |     }else{
+0309 |       const price=market.quality.perAsset[candidates.asset].ask;
+0310 |       a.position=candidates.asset;a.entryPrice=price;
+0311 |       a.investedVirtual=budget;a.units=budget*(1-cost)/price;
+0312 |       a.cash-=budget;a.entryAtUTC=now;a.stopFraction=stop;
+0313 |       a.cumulativeCostsVirtual+=budget*cost;
+0314 |       action={type:'BUY',asset:candidates.asset,
+0315 |         reason:'Três candles confirmam BTC e tendência individual da moeda',
+0316 |         simulatedEntryPrice:price,investedVirtual:round(budget,4),
+0317 |         stopPct:round(stop*100,3),costVirtual:round(budget*cost,4)};
+0318 |     }
+0319 |   }else action={type:'HOLD',reason:'Nenhum ativo superou os filtros em 3 candles'};
+0320 |   const after=liquidValue(a,market.quotes,c);
+0321 |   a.peakEquity=Math.max(a.peakEquity,after);
+0322 |   const finalAccount=snapshotWithMetrics(a,market.quotes,c);
+0323 |   append(state,'EVALUATION',now,t,{
+0324 |     source:'Binance Spot pública; quotes ticker + bookTicker + 1m confirmadas; execução ilustrativa no bid/ask observado',
+0325 |     missedCandles:missing,quoteCapturedAtUTC:now,
+0326 |     latencyMinutes:round(ageMs/60000,2),
+0327 |     inputSnapshot,shadow,
+0328 |     quotes:market.quotes,
+0329 |     candidate:possible,
+0330 |     action,
+0331 |     account:finalAccount
+0332 |   });
+0333 |   return {changed:true,event:state.events.at(-1)};
+0334 | }
+0335 | module.exports={ASSETS,BAR_MS,DEFAULT_CONFIG,eventHash,verify,runCycle,
+0336 |   sma,vol,btcOK,coinOK,coinExitHealthy,strength,entrySignal,buildInputs,shadowSignals,forwardResolutions};
+0337 | 
+========== FIM: v4-1/core.js ==========
+
+
+========== ARQUIVO 2/9 | INÍCIO: v4-1/runner.cjs | 131 linhas ==========
+0001 | /* Rotation Lab V4.1: forward-only Binance monitor with two price reads + bookTicker + 1m close.
+0002 |  * Public API, no keys, no accounts, no real orders.
+0003 |  */
+0004 | 'use strict';
+0005 | const fs=require('node:fs'),crypto=require('node:crypto');
+0006 | const {runCycle,verify,ASSETS,BAR_MS}=require('./core.js');
+0007 | const STATE_FILE='v4-1/state.json';
+0008 | const FREEZE_FILES=['v4-1/core.js','v4-1/runner.cjs','.github/workflows/rotation-lab-v4-1.yml'];
+0009 | const BASES=['https://data-api.binance.vision','https://api.binance.com'];
+0010 | const SHA=x=>crypto.createHash('sha256').update(x).digest('hex');
+0011 | const rel=(x,y)=>Math.abs(x-y)/Math.max(1e-8,y);
+0012 | const positive=x=>Number.isFinite(x)&&x>0;
+0013 | function freezeHash(){
+0014 |   return SHA(JSON.stringify(FREEZE_FILES.map(path=>({file:path,sha256:SHA(fs.readFileSync(path))}))));
+0015 | }
+0016 | async function fetchJson(url){
+0017 |   const resp=await fetch(url,{signal:AbortSignal.timeout(18000),
+0018 |     headers:{Accept:'application/json','User-Agent':'Rotation-Lab-V4-1-Virtual-Study/1.0'}});
+0019 |   if(!resp.ok)throw Error('Binance HTTP '+resp.status+' '+url.split('?')[0]);
+0020 |   const value=await resp.json();
+0021 |   if(value&&value.code&&value.msg)throw Error('Binance: '+value.msg);
+0022 |   return value;
+0023 | }
+0024 | function lastClosedMinute(rows,now){
+0025 |   if(!Array.isArray(rows))throw Error('1m candles inválidos');
+0026 |   const eligible=rows.filter(row=>Number(row[6])<=now-3000);
+0027 |   if(!eligible.length)throw Error('Nenhum candle 1m fechado');
+0028 |   const last=eligible.at(-1);
+0029 |   return {close:Number(last[4]),closedAtMs:Number(last[6])};
+0030 | }
+0031 | async function quoteWithCrossCheck(base,asset,lastFourHourClose){
+0032 |   const pair=asset+'USDT';
+0033 |   const tickerURL=base+'/api/v3/ticker/price?symbol='+pair;
+0034 |   const quote1=await fetchJson(tickerURL);
+0035 |   const [book,candles1m,quote2]=await Promise.all([
+0036 |     fetchJson(base+'/api/v3/ticker/bookTicker?symbol='+pair),
+0037 |     fetchJson(base+'/api/v3/klines?symbol='+pair+'&interval=1m&limit=4'),
+0038 |     fetchJson(tickerURL)
+0039 |   ]);
+0040 |   const atMs=Date.now(),tickerFirst=Number(quote1.price),tickerSecond=Number(quote2.price);
+0041 |   const bid=Number(book.bidPrice),ask=Number(book.askPrice);
+0042 |   const minute=lastClosedMinute(candles1m,atMs),minuteClose=minute.close;
+0043 |   const minuteAgeMs=atMs-minute.closedAtMs;
+0044 |   if(![tickerFirst,tickerSecond,bid,ask,minuteClose].every(positive)||ask<bid)
+0045 |     throw Error('Preço ou book inválido: '+asset);
+0046 |   const spread=ask/bid-1;
+0047 |   const disagreement=rel(tickerFirst,tickerSecond);
+0048 |   const midpoint=(bid+ask)/2;
+0049 |   const diffBook=rel(tickerSecond,midpoint),diffMinute=rel(tickerSecond,minuteClose);
+0050 |   if(disagreement>0.004||diffBook>0.006||diffMinute>0.025||spread>0.01||
+0051 |       minuteAgeMs<0||minuteAgeMs>180000)
+0052 |     throw Error('Cotação não confirmada de '+asset+
+0053 |       ' (duas leituras '+(100*disagreement).toFixed(2)+'%, book '+(100*diffBook).toFixed(2)+
+0054 |       '%, 1m '+(100*diffMinute).toFixed(2)+'%). Sem ordem simulada.');
+0055 |   const gapFromFourHour=100*(tickerSecond/lastFourHourClose-1);
+0056 |   return {price:tickerSecond,detail:{tickerFirst,tickerSecond,bid,ask,minuteClose,
+0057 |     minuteAgeMs,validated:true,gapFromFourHourPct:Number(gapFromFourHour.toFixed(3)),
+0058 |     notableMove:Math.abs(gapFromFourHour)>12}};
+0059 | }
+0060 | async function readProvider(base){
+0061 |   const bars=await Promise.all(ASSETS.map(async asset=>{
+0062 |     const rows=await fetchJson(base+'/api/v3/klines?symbol='+asset+
+0063 |       'USDT&interval=4h&limit=160');
+0064 |     if(!Array.isArray(rows)||rows.length<110)throw Error('Histórico 4h insuficiente: '+asset);
+0065 |     return [asset,rows];
+0066 |   }));
+0067 |   const nowMs=Date.now();
+0068 |   const records=Object.fromEntries(bars.map(([asset,rows])=>
+0069 |     [asset,rows.filter(r=>Number(r[6])<=nowMs-120000)
+0070 |       .map(r=>({t:Number(r[0]),c:Number(r[4])}))]));
+0071 |   const common=new Set(records.BTC.map(r=>r.t));
+0072 |   for(const asset of ASSETS.slice(1)){
+0073 |     const other=new Set(records[asset].map(r=>r.t));
+0074 |     for(const time of [...common])if(!other.has(time))common.delete(time);
+0075 |   }
+0076 |   const times=[...common].sort((x,y)=>x-y).slice(-120);
+0077 |   if(times.length<110)throw Error('Candles não alinham');
+0078 |   for(let i=1;i<times.length;i++)
+0079 |     if(times[i]-times[i-1]!==BAR_MS)throw Error('Há lacuna de candles');
+0080 |   const latest=times.at(-1),delay=nowMs-(latest+BAR_MS);
+0081 |   if(delay<120000)throw Error('Candle ainda sem 2 min de confirmação');
+0082 |   if(delay>BAR_MS*2)throw Error('Feed histórico mais antigo que 8h');
+0083 |   const candles={};
+0084 |   for(const asset of ASSETS){
+0085 |     const dict=new Map(records[asset].map(row=>[row.t,row]));
+0086 |     candles[asset]=times.map(t=>dict.get(t));
+0087 |     if(candles[asset].some(x=>!positive(x.c)))throw Error('Preço de candle inválido: '+asset);
+0088 |   }
+0089 |   const results=await Promise.all(ASSETS.map(async asset=>
+0090 |     [asset,await quoteWithCrossCheck(base,asset,candles[asset].at(-1).c)]));
+0091 |   const quotes={},quality={source:base,perAsset:{}};
+0092 |   for(const [asset,value] of results){
+0093 |     quotes[asset]=value.price;quality.perAsset[asset]=value.detail;
+0094 |   }
+0095 |   return {capturedAtUTC:new Date().toISOString(),candleOpenMs:latest,candles,quotes,quality};
+0096 | }
+0097 | async function marketData(){
+0098 |   const failures=[];
+0099 |   for(const base of BASES){
+0100 |     try{return await readProvider(base)}
+0101 |     catch(e){failures.push(base+': '+String(e.message||e))}
+0102 |   }
+0103 |   throw Error('Todas as fontes Binance falharam na validação: '+failures.join(' | '));
+0104 | }
+0105 | async function main(){
+0106 |   const state=JSON.parse(fs.readFileSync(STATE_FILE,'utf8'));
+0107 |   verify(state);
+0108 |   const market=await marketData();
+0109 |   const result=runCycle(state,market,{bundleHash:freezeHash()});
+0110 |   if(!result.changed){
+0111 |     console.log(JSON.stringify({status:'unchanged',reason:result.reason,
+0112 |       seq:state.events.at(-1)?.seq||0}));
+0113 |     return;
+0114 |   }
+0115 |   fs.writeFileSync(STATE_FILE,JSON.stringify(state,null,2)+'\n','utf8');
+0116 |   const e=result.event,a=e.payload.account;
+0117 |   console.log(JSON.stringify({status:'simulated_event_recorded',seq:e.seq,
+0118 |     kind:e.type,recordedAtUTC:e.recordedAtUTC,action:e.payload.action?.type||'BASELINE',
+0119 |     source:market.quality.source,equityVirtual:a.equityVirtual,
+0120 |     btcVirtual:a.btcBenchmarkVirtual,shadowSignals:e.payload.shadow?.emitted.length||0,
+0121 |     shadowMatured:e.payload.shadow?.matured.length||0,
+0122 |     quoteLatencyMinutes:e.payload.latencyMinutes,missing:e.payload.missedCandles}));
+0123 | }
+0124 | if(require.main===module){
+0125 |   main().catch(error=>{
+0126 |     console.error('V4.1 FAIL CLOSED: registro não gravado. '+(error.stack||error));
+0127 |     process.exitCode=1;
+0128 |   });
+0129 | }
+0130 | module.exports={main,marketData,readProvider,quoteWithCrossCheck,lastClosedMinute,freezeHash};
+0131 | 
+========== FIM: v4-1/runner.cjs ==========
+
+
+========== ARQUIVO 3/9 | INÍCIO: v4-1/tests.cjs | 163 linhas ==========
+0001 | /* Rotation Lab V4.1: regression and adversarial tests. Run with node --test v4-1/tests.cjs */
+0002 | 'use strict';
+0003 | const test=require('node:test'),assert=require('node:assert/strict');
+0004 | const fs=require('node:fs');
+0005 | const core=require('./core.js');
+0006 | const runner=require('./runner.cjs');
+0007 | const {ASSETS,BAR_MS}=core;
+0008 | const start=Date.UTC(2026,10,4,0);
+0009 | const baselineConfig=JSON.parse(fs.readFileSync('v4-1/state.json','utf8')).config;
+0010 | function market(offset=0,lagMinutes=23){
+0011 |   const t=start+offset*BAR_MS;
+0012 |   const candles={},quotes={},perAsset={};
+0013 |   for(const [index,s] of ASSETS.entries()){
+0014 |     candles[s]=Array.from({length:120},(_,i)=>{
+0015 |       const price=100*Math.exp((i+offset)*(.003+index*.0001));
+0016 |       return {t:t-(119-i)*BAR_MS,c:price};
+0017 |     });
+0018 |     const price=candles[s].at(-1).c*1.0005;
+0019 |     quotes[s]=price;
+0020 |     perAsset[s]={tickerFirst:price,tickerSecond:price,bid:price*.9997,ask:price*1.0003,
+0021 |       minuteClose:price,minuteAgeMs:42000,validated:true};
+0022 |   }
+0023 |   return {candleOpenMs:t,capturedAtUTC:new Date(t+BAR_MS+lagMinutes*60000).toISOString(),
+0024 |     candles,quotes,quality:{source:'SYNTHETIC TEST',perAsset}};
+0025 | }
+0026 | function state(){return {schema:1,config:{...baselineConfig},events:[]}}
+0027 | function apply(s,m){return core.runCycle(s,m,{bundleHash:'test-frozen-bundle-hash'})}
+0028 | test('Primeiro ciclo cria BASELINE sem compras retroativas',()=>{
+0029 |  const s=state();apply(s,market());
+0030 |  assert.equal(s.events.length,1);
+0031 |  assert.equal(s.events[0].type,'BASELINE');
+0032 |  assert.equal(s.events[0].payload.account.position,null);
+0033 |  assert.equal(s.events[0].payload.account.equityVirtual,50);
+0034 |  assert.equal(s.events[0].payload.inputSnapshot.indicators.BTC.closeHistory.length,120);
+0035 |  assert.ok(core.verify(s));
+0036 | });
+0037 | test('Mesmo candle não duplica registros; candle seguinte cria EVALUATION',()=>{
+0038 |  const s=state();apply(s,market());
+0039 |  assert.equal(apply(s,market()).changed,false);
+0040 |  const next=apply(s,market(1));
+0041 |  assert.equal(next.changed,true);
+0042 |  assert.equal(s.events.length,2);
+0043 |  assert.equal(s.events[1].payload.shadow.emitted.length,5);
+0044 |  assert.ok(s.events[1].payload.action.type);
+0045 |  assert.ok(core.verify(s));
+0046 | });
+0047 | test('Registro-sombra amadurece só depois de 1,3,6,12 candles sem usar o futuro',()=>{
+0048 |  const s=state();for(let i=0;i<=14;i++)apply(s,market(i));
+0049 |  assert.equal(s.events.length,15);
+0050 |  const e1=s.events.find(e=>e.seq===3);
+0051 |  assert.equal(e1.payload.shadow.matured.length,5);
+0052 |  const e12=s.events.at(-1);
+0053 |  const h12=e12.payload.shadow.matured.filter(x=>x.horizonBars===12);
+0054 |  assert.equal(h12.length,5);
+0055 |  assert.ok(h12.every(x=>Number.isFinite(x.theoreticalNetPct)));
+0056 |  assert.ok(core.verify(s));
+0057 | });
+0058 | test('Bloqueia BUY após mais de 90 minutos, mas registra sinais-sombra',()=>{
+0059 |  const s=state();apply(s,market());
+0060 |  const e=apply(s,market(1,111)).event;
+0061 |  assert.equal(e.payload.action.type,'SKIP_STALE');
+0062 |  assert.equal(e.payload.shadow.emitted.length,5);
+0063 |  assert.equal(e.payload.account.position,null);
+0064 | });
+0065 | test('Tolerância de 90min é aplicada à compra mesmo com tendência positiva',()=>{
+0066 |  const s=state();apply(s,market());
+0067 |  const e=apply(s,market(1,23)).event;
+0068 |  assert.equal(e.payload.action.type,'BUY');
+0069 |  assert.ok(e.payload.account.position);
+0070 | });
+0071 | test('Faltas de candle ficam explícitas, sem fabricar trades retroativos',()=>{
+0072 |  const s=state();apply(s,market());
+0073 |  const r=apply(s,market(3)).event;
+0074 |  assert.equal(r.payload.missedCandles,2);
+0075 |  assert.equal(s.events.length,2);
+0076 |  assert.equal(r.payload.shadow.matured.length,0);
+0077 | });
+0078 | test('Preço sem qualidade confirmada não gera evento',()=>{
+0079 |  const s=state(),m=market();m.quality.perAsset.BTC.validated=false;
+0080 |  assert.throws(()=>apply(s,m),/validação cruzada/);
+0081 |  assert.equal(s.events.length,0);
+0082 | });
+0083 | test('Cotação anômala com book normal é rejeitada',()=>{
+0084 |  const s=state(),m=market();m.quotes.SOL*=1.08;
+0085 |  m.quality.perAsset.SOL.tickerFirst=m.quotes.SOL;
+0086 |  m.quality.perAsset.SOL.tickerSecond=m.quotes.SOL;
+0087 |  assert.throws(()=>apply(s,m),/inconsistente/);
+0088 |  assert.equal(s.events.length,0);
+0089 | });
+0090 | test('Cotações cruzadas inválidas também são rejeitadas em queda',()=>{
+0091 |  const s=state(),m=market();m.quality.perAsset.ETH.minuteClose*=1.12;
+0092 |  assert.throws(()=>apply(s,m),/inconsistente/);
+0093 | });
+0094 | test('Fuga de informação: candles futuros não são usados em um sinal emitido',()=>{
+0095 |  const a=market(1),b=market(1);
+0096 |  for(const asset of ASSETS){
+0097 |    b.candles[asset].push({t:b.candleOpenMs+BAR_MS,c:1e9});
+0098 |  }
+0099 |  assert.throws(()=>core.runCycle(state(),b,{bundleHash:'x'}),/horários desalinhados|Snapshot inconsistente|Série histórica incompleta/);
+0100 |  const s=state();apply(s,market());
+0101 |  const r=apply(s,a).event;
+0102 |  assert.equal(r.payload.inputSnapshot.lastCandleUTC,new Date(a.candleOpenMs).toISOString());
+0103 | });
+0104 | test('Mudança de configuração ou núcleo é bloqueada após baseline',()=>{
+0105 |  const s=state();apply(s,market());
+0106 |  s.config.takeProfit=.99;
+0107 |  assert.throws(()=>apply(s,market(1)),/Configuração modificada/);
+0108 |  s.config.takeProfit=baselineConfig.takeProfit;
+0109 |  assert.throws(()=>core.runCycle(s,market(1),{bundleHash:'modified'}),/motor da estratégia mudou/);
+0110 | });
+0111 | test('Alterações silenciosas em eventos são detectadas no SHA-256',()=>{
+0112 |  const s=state();apply(s,market());apply(s,market(1));
+0113 |  s.events[1].payload.account.cash=999;
+0114 |  assert.throws(()=>core.verify(s),/Integridade/);
+0115 | });
+0116 | test('Filtro de saída não trata preço acima da média como tendência ruim',()=>{
+0117 |  const m=market(),data=m.candles,last=data.BTC.length-1,c=baselineConfig;
+0118 |  const p=data.SOL[last].c;
+0119 |  data.SOL[last].c=p*1.07;
+0120 |  assert.equal(core.coinOK(data,'SOL',last,c),false);
+0121 |  assert.equal(core.coinExitHealthy(data,'SOL',last,c),true);
+0122 | });
+0123 | test('Orçamento virtual interno não autoriza ordens reais',()=>{
+0124 |  const source=fs.readFileSync('v4-1/runner.cjs','utf8');
+0125 |  assert.ok(!source.includes('/api/v3/order'));
+0126 |  assert.ok(!source.includes('X-MBX-APIKEY'));
+0127 |  assert.ok(!source.includes('PRIVATE_KEY'));
+0128 | });
+0129 | test('Cotação cruzada: dois tickers, bookTicker e candle 1m',async t=>{
+0130 |  const original=global.fetch,now=Date.now();
+0131 |  t.after(()=>{global.fetch=original});
+0132 |  global.fetch=async url=>{
+0133 |    const href=String(url);
+0134 |    let payload;
+0135 |    if(href.includes('ticker/bookTicker'))payload={bidPrice:'99.98',askPrice:'100.02'};
+0136 |    else if(href.includes('ticker/price'))payload={price:'100'};
+0137 |    else if(href.includes('interval=1m'))payload=[
+0138 |      [now-120000,0,0,0,100,0,now-60001],
+0139 |      [now-60000,0,0,0,100,0,now-1]
+0140 |    ];
+0141 |    else throw Error('Unexpected fetch '+url);
+0142 |    return {ok:true,json:async()=>payload};
+0143 |  };
+0144 |  const validated=await runner.quoteWithCrossCheck('https://mock.binance.local','BTC',100);
+0145 |  assert.equal(validated.price,100);
+0146 |  assert.equal(validated.detail.validated,true);
+0147 | });
+0148 | test('Ticker absurdamente inconsistente falha no runner',async t=>{
+0149 |  const original=global.fetch,now=Date.now();
+0150 |  t.after(()=>{global.fetch=original});
+0151 |  global.fetch=async url=>{
+0152 |    const href=String(url);
+0153 |    let payload;
+0154 |    if(href.includes('ticker/bookTicker'))payload={bidPrice:'99.98',askPrice:'100.02'};
+0155 |    else if(href.includes('ticker/price'))payload={price:'109'};
+0156 |    else if(href.includes('interval=1m'))payload=[
+0157 |      [now-120000,0,0,0,100,0,now-60001]
+0158 |    ];
+0159 |    return {ok:true,json:async()=>payload};
+0160 |  };
+0161 |  await assert.rejects(()=>runner.quoteWithCrossCheck('https://mock.binance.local','BTC',100),/não confirmada/);
+0162 | });
+0163 | 
+========== FIM: v4-1/tests.cjs ==========
+
+
+========== ARQUIVO 4/9 | INÍCIO: v4-1/analysis.js | 32 linhas ==========
+0001 | /* Rotation Lab V4.1 research-only benchmarks.
+0002 |  * Does not alter frozen core/runner/workflow or paper trades.
+0003 |  */
+0004 | (function(root){
+0005 | 'use strict';
+0006 | const ASSETS=['BTC','ETH','SOL','BNB','XRP'];
+0007 | const cost=config=>(Number(config.feePctPerSide)+Number(config.slippagePctPerSide))/100;
+0008 | function evaluate(state){
+0009 |   if(!state?.events?.length)return {points:[],last:null};
+0010 |   const cfg=state.config,init=Number(cfg.initialCapitalVirtual),base=state.events[0].payload.quotes;
+0011 |   const c=cost(cfg),accounting=(1-c)*(1-c);
+0012 |   if(!ASSETS.every(s=>Number.isFinite(base[s])&&base[s]>0))throw Error('Baseline sem preços válidos para benchmark');
+0013 |   const points=state.events.map(event=>{
+0014 |     const quotes=event.payload.quotes;
+0015 |     const ratio=s=>quotes[s]/base[s];
+0016 |     const b65=init*(0.35+0.65*accounting*ratio('BTC'));
+0017 |     const equal=init*accounting*ASSETS.reduce((sum,s)=>sum+ratio(s)/ASSETS.length,0);
+0018 |     return {at:event.recordedAtUTC,exposureMatchedBTC:b65,equalWeightFive:equal,
+0019 |       btc100:event.payload.account.btcBenchmarkVirtual,
+0020 |       cash100:event.payload.account.cashBenchmarkVirtual,
+0021 |       v41:event.payload.account.equityVirtual};
+0022 |   });
+0023 |   return {points,last:points.at(-1),assumptions:{
+0024 |     matched:'65% BTC + 35% caixa, com compra/venda simuladas a custo total de ida/volta',
+0025 |     equal:'20% de cada BTC, ETH, SOL, BNB e XRP, com custos de ida/volta',
+0026 |     prices:'Preço público ticker USDT, unidade virtual não convertida para BRL',
+0027 |     causality:'Benchmark fixo a partir do preço consultado no marco inicial, sem rebalanceamentos',
+0028 |     caution:'Comparação de exposição, não prova de habilidade; carteira V4.1 pode ficar 100% em caixa por muitos candles.'}};
+0029 | }
+0030 | root.RotationLabV41Analysis={evaluate};
+0031 | })(typeof window!=='undefined'?window:globalThis);
+0032 | 
+========== FIM: v4-1/analysis.js ==========
+
+
+========== ARQUIVO 5/9 | INÍCIO: v4-1/app.js | 261 linhas ==========
+0001 | /* Rotation Lab V4.1 — read-only dashboard for GitHub-committed paper-forward events. */
+0002 | (function(){
+0003 | 'use strict';
+0004 | const REPO='veloraspaces0/rotation-lab-v1';
+0005 | const API='https://api.github.com/repos/'+REPO+'/contents/v4-1/state.json?ref=main';
+0006 | const RAW='https://raw.githubusercontent.com/'+REPO+'/main/v4-1/state.json';
+0007 | const $=id=>document.getElementById(id);
+0008 | const cash=x=>Number(x).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2});
+0009 | const pct=x=>(x>0?'+':'')+Number(x).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+0010 | const localeUTC=x=>new Date(x).toLocaleString('pt-BR',{timeZone:'UTC',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' UTC';
+0011 | let current=null,busy=false,loadedAt=null;
+0012 | function error(msg){
+0013 |   $('stateStatus').textContent=msg;
+0014 |   $('stateStatus').className='statusline bad';
+0015 |   $('refreshBtn').disabled=false;
+0016 |   $('updateInfo').textContent='Uma falha de rede não altera o histórico nem cria operações. Verifique o GitHub Actions.';
+0017 | }
+0018 | async function dataFromGitHub(){
+0019 |   let err;
+0020 |   try{
+0021 |     const r=await fetch(API+'&cache='+Date.now(),{
+0022 |       cache:'no-store',headers:{Accept:'application/vnd.github+json'}});
+0023 |     if(!r.ok)throw Error('GitHub Contents HTTP '+r.status);
+0024 |     const j=await r.json();
+0025 |     if(j.encoding!=='base64'||!j.content)throw Error('Conteúdo JSON não disponível');
+0026 |     const bytes=Uint8Array.from(atob(j.content.replace(/\s/g,'')),c=>c.charCodeAt(0));
+0027 |     return JSON.parse(new TextDecoder().decode(bytes));
+0028 |   }catch(e){err=e}
+0029 |   try{
+0030 |     const r=await fetch(RAW+'?v='+Date.now(),{cache:'no-store'});
+0031 |     if(!r.ok)throw Error('GitHub RAW HTTP '+r.status);
+0032 |     return await r.json();
+0033 |   }catch(e){throw Error('Não foi possível consultar o estado. API: '+err.message+' / RAW: '+e.message)}
+0034 | }
+0035 | async function sha256(s){
+0036 |   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
+0037 |   return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+0038 | }
+0039 | async function audit(state){
+0040 |   if(!state||state.schema!==1||!Array.isArray(state.events))throw Error('Formato de relatório inesperado');
+0041 |   let previous='GENESIS';
+0042 |   for(let i=0;i<state.events.length;i++){
+0043 |     const e=state.events[i];
+0044 |     if(e.seq!==i+1||e.prevHash!==previous)
+0045 |       throw Error('Sequência inválida no evento '+(i+1));
+0046 |     const input=JSON.stringify({seq:e.seq,prevHash:e.prevHash,
+0047 |       type:e.type,recordedAtUTC:e.recordedAtUTC,candleOpenMs:e.candleOpenMs,payload:e.payload});
+0048 |     if(await sha256(input)!==e.hash)throw Error('Hash SHA-256 inválido no evento '+(i+1));
+0049 |     if(i&&e.candleOpenMs<=state.events[i-1].candleOpenMs)
+0050 |       throw Error('Horário de candle duplicado ou retroativo');
+0051 |     previous=e.hash;
+0052 |   }
+0053 |   if(state.events.length&&state.events[0].type!=='BASELINE')throw Error('Registro inicial inválido');
+0054 |   return true;
+0055 | }
+0056 | const esc=x=>String(x).replace(/[&<>"']/g,k=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[k]));
+0057 | function colorize(id,value){
+0058 |   const el=$(id);
+0059 |   el.classList.remove('up','down');
+0060 |   if(value>0)el.classList.add('up');
+0061 |   if(value<0)el.classList.add('down');
+0062 | }
+0063 | function metrics(state){
+0064 |   const events=state.events,capital=state.config?.initialCapitalVirtual||50;
+0065 |   $('cash').textContent=cash(capital);
+0066 |   $('eventCount').textContent=events.length+' '+(events.length===1?'evento':'eventos');
+0067 |   if(!events.length){
+0068 |     $('equity').textContent=cash(capital);
+0069 |     $('equityReturn').textContent='Sem observações · aguardando marco inicial';
+0070 |     $('btc').textContent='—';
+0071 |     $('btcReturn').textContent='Sem referência BTC inicial';
+0072 |     $('drawdown').textContent='—';
+0073 |     $('tradeCount').textContent='0 saídas';
+0074 |     $('eventTime').textContent='Ainda não iniciado';
+0075 |     $('lastDecision').textContent='Aguardando a primeira execução bem-sucedida no GitHub Actions.';
+0076 |     $('position').textContent='Sem posição.';
+0077 |     $('eventRows').innerHTML='<tr><td colspan="5">Sem registros ainda. Ative o workflow no GitHub Actions: a primeira execução criará somente o marco inicial.</td></tr>';
+0078 |     $('stateStatus').className='statusline';
+0079 |     $('stateStatus').textContent='Aguardando ativação da V4. Nenhuma operação virtual foi executada.';
+0080 |     $('auditStatus').className='statusline';
+0081 |     $('auditStatus').textContent='Estado inicial vazio: sem eventos para validar.';
+0082 |     $('updateInfo').textContent='Última consulta ao GitHub: '+localeUTC(new Date().toISOString())+'.';
+0083 |     renderShadow(state);renderBenchmarks(state);
+0084 |     draw(state);
+0085 |     return;
+0086 |   }
+0087 |   const last=events.at(-1),a=last.payload.account;
+0088 |   const gain=100*(a.equityVirtual/capital-1),btcGain=100*(a.btcBenchmarkVirtual/capital-1);
+0089 |   $('equity').textContent=cash(a.equityVirtual);
+0090 |   $('equityReturn').textContent=pct(gain)+' desde a ativação, já com custos';
+0091 |   $('btc').textContent=cash(a.btcBenchmarkVirtual);
+0092 |   $('btcReturn').textContent=pct(btcGain)+' incluindo custos estimados de ida/volta';
+0093 |   $('drawdown').textContent=pct(Math.min(0,100*(a.equityVirtual/a.peakEquity-1)));
+0094 |   colorize('equity',gain);colorize('btc',btcGain);
+0095 |   const orders=events.filter(e=>e.type==='EVALUATION'&&e.payload.action.type.startsWith('SELL'));
+0096 |   $('tradeCount').textContent=orders.length+' '+(orders.length===1?'saída':'saídas');
+0097 |   $('eventTime').textContent=localeUTC(last.recordedAtUTC);
+0098 |   const action=last.payload.action;
+0099 |   $('lastDecision').textContent=last.type==='BASELINE'?
+0100 |     'Marco inicial registrado. Nenhuma compra retroativa. Aguardando o próximo candle de 4 horas.':
+0101 |     (action.type+(action.asset?' · '+action.asset:'')+' — '+action.reason+
+0102 |       (last.payload.missedCandles>0?' · '+last.payload.missedCandles+' candle(s) sem avaliação retroativa.':''));
+0103 |   $('position').textContent=a.hardHalt?
+0104 |     'PROTEÇÃO ATIVADA — sem novas entradas neste experimento. Posição: '+(a.position||'caixa')+'.':
+0105 |     a.position?(a.position+' · '+cash(a.investedVirtual)+' inicialmente aplicado; saldo em caixa '+cash(a.cash)+'.'):
+0106 |     '100% em caixa virtual. Aguardando sinal confirmado.';
+0107 |   const elapsed=(Date.now()-Date.parse(last.recordedAtUTC))/3600000;
+0108 |   const fresh=elapsed<10;
+0109 |   $('stateStatus').className='statusline '+(fresh?'good':'bad');
+0110 |   $('stateStatus').textContent=a.hardHalt?
+0111 |     'Freio de carteira ativado. A estratégia interrompeu novas compras. Registro auditável disponível.':
+0112 |     ('Registro '+last.seq+' consultado do GitHub. '+(fresh?'Dados recentes.':
+0113 |       'Última execução antiga; verifique se o workflow continua funcionando.'));
+0114 |   $('updateInfo').textContent='Última execução registrada: '+localeUTC(last.recordedAtUTC)+
+0115 |     ' · candle fechado: '+localeUTC(last.candleOpenMs+4*3600000)+
+0116 |     ' · consulta do painel: '+localeUTC(new Date().toISOString())+
+0117 |     '. As execuções podem atrasar.';
+0118 |   $('auditStatus').className='statusline good';
+0119 |   $('auditStatus').textContent='✓ Sequência e hashes SHA-256 verificados localmente ('+events.length+
+0120 |     ' eventos). A cadeia detecta alterações, mas não é assinatura independente; confira os commits no GitHub.';
+0121 |   const recent=[...events].reverse().slice(0,25);
+0122 |   $('eventRows').innerHTML=recent.map(e=>{
+0123 |     const p=e.payload,a=p.account,act=p.action||{type:'BASELINE',reason:'Início prospectivo; nenhuma ordem'};
+0124 |     const note=act.reason+(p.missedCandles>0?
+0125 |       ' · Pularam '+p.missedCandles+' candle(s) sem simular execução retroativa':'');
+0126 |     return '<tr><td>'+esc(localeUTC(e.recordedAtUTC))+'</td>'+
+0127 |       '<td><strong>'+esc(act.type)+'</strong>'+(act.asset?' · '+esc(act.asset):'')+'</td>'+
+0128 |       '<td>'+cash(a.equityVirtual)+'</td><td>'+cash(a.btcBenchmarkVirtual)+'</td>'+
+0129 |       '<td>'+esc(note)+'</td></tr>';
+0130 |   }).join('');
+0131 |   renderShadow(state);renderBenchmarks(state);
+0132 |     draw(state);
+0133 | }
+0134 | 
+0135 | function renderShadow(state){
+0136 |   const events=state.events;
+0137 |   const emissions=events.flatMap(e=>e.payload?.shadow?.emitted||[]);
+0138 |   const observed=events.flatMap(e=>e.payload?.shadow?.matured||[]);
+0139 |   const eligibles=emissions.filter(s=>s.eligible);
+0140 |   $('shadowCount').textContent=emissions.length+' '+(emissions.length===1?'observação':'observações');
+0141 |   $('shadowEligible').textContent=eligibles.length+' elegíveis';
+0142 |   $('shadowSettled').textContent=observed.length+' resultados maduros';
+0143 |   const horizons=[1,3,6,12];
+0144 |   $('shadowRows').innerHTML=horizons.map(h=>{
+0145 |     const entries=observed.filter(e=>e.horizonBars===h);
+0146 |     const yes=entries.filter(e=>e.eligibleAtOrigin);
+0147 |     const average=a=>a.length?((a.reduce((s,x)=>s+x.theoreticalNetPct,0)/a.length).toFixed(3)+'%'):'—';
+0148 |     return '<tr><td>'+h+' candle(s) / '+(4*h)+'h</td>'+
+0149 |       '<td>'+yes.length+'</td>'+
+0150 |       '<td>'+average(yes)+'</td>'+
+0151 |       '<td>'+entries.length+' / '+average(entries)+'</td>'+
+0152 |       '<td>'+(!entries.length?'Aguardando maturação':'Retornos sobrepostos e correlacionados')+'</td></tr>';
+0153 |   }).join('');
+0154 |   const last=events.at(-1);
+0155 |   if(!last){
+0156 |     $('qualitySource').textContent='Aguardando';
+0157 |     $('qualityLag').textContent='—';
+0158 |     $('qualityStatus').textContent='Sem amostras';
+0159 |     $('freezeStatus').textContent='A V4.1 ainda não possui um marco inicial; nenhuma operação virtual foi realizada.';
+0160 |     return;
+0161 |   }
+0162 |   const p=last.payload,quality=p.inputSnapshot?.quoteQuality||{};
+0163 |   $('qualitySource').textContent=quality.source?.replace('https://','')||'Fonte não registrada';
+0164 |   $('qualityLag').textContent=(p.latencyMinutes??0)+' min após fechamento';
+0165 |   const points=quality.perAsset||{};
+0166 |   const good=Object.keys(points).length===5&&Object.values(points).every(x=>x.validated===true);
+0167 |   $('qualityStatus').textContent=good?'5/5 moedas verificadas':'Qualidade não confirmada';
+0168 |   $('freezeStatus').textContent='Motor congelado no BASELINE: pacote SHA-256 '+
+0169 |     (events[0].payload.coreHash?.slice(0,20)||'não disponível')+'… '+
+0170 |     'Configuração SHA-256 '+(events[0].payload.configHash?.slice(0,20)||'não disponível')+
+0171 |     '…. A trilha de commits do GitHub é necessária para auditoria independente.';
+0172 | }
+0173 | 
+0174 | 
+0175 | function renderBenchmarks(state){
+0176 |   const mod=window.RotationLabV41Analysis;
+0177 |   const analysis=mod?.evaluate(state),last=analysis?.last;
+0178 |   const cap=state.config?.initialCapitalVirtual||50;
+0179 |   const matched=$('benchmarkMatched'),equal=$('benchmarkEqual');
+0180 |   if(!last){
+0181 |     matched.textContent='—';equal.textContent='—';
+0182 |     $('benchmarkMatchedReturn').textContent='Aguardando baseline';
+0183 |     $('benchmarkEqualReturn').textContent='Aguardando baseline';
+0184 |     return;
+0185 |   }
+0186 |   matched.textContent=cash(last.exposureMatchedBTC);
+0187 |   equal.textContent=cash(last.equalWeightFive);
+0188 |   $('benchmarkMatchedReturn').textContent=pct(100*(last.exposureMatchedBTC/cap-1))+' desde o baseline';
+0189 |   $('benchmarkEqualReturn').textContent=pct(100*(last.equalWeightFive/cap-1))+' desde o baseline';
+0190 | }
+0191 | 
+0192 | function draw(state){
+0193 |   const canvas=$('equityChart'),width=Math.max(290,canvas.parentElement.clientWidth-20),height=280;
+0194 |   const ratio=Math.min(3,window.devicePixelRatio||1);
+0195 |   canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
+0196 |   canvas.style.width=width+'px';canvas.style.height=height+'px';
+0197 |   const ctx=canvas.getContext('2d');if(!ctx)return;
+0198 |   ctx.setTransform(ratio,0,0,ratio,0,0);
+0199 |   ctx.clearRect(0,0,width,height);
+0200 |   const extras=window.RotationLabV41Analysis?.evaluate(state).points||[];
+0201 |   const series=state.events.map((e,i)=>({...e.payload.account,
+0202 |     exposureMatchedBTC:extras[i]?.exposureMatchedBTC,
+0203 |     equalWeightFive:extras[i]?.equalWeightFive}));
+0204 |   const capital=state.config?.initialCapitalVirtual||50;
+0205 |   const total=series.length, values=series.flatMap(a=>[
+0206 |     a.equityVirtual,a.btcBenchmarkVirtual,a.cashBenchmarkVirtual,a.exposureMatchedBTC,a.equalWeightFive].filter(Number.isFinite));
+0207 |   const min0=Math.min(...values,capital),max0=Math.max(...values,capital);
+0208 |   const pad=Math.max(.5,(max0-min0)*.2),min=min0-pad,max=max0+pad;
+0209 |   const x0=44,x1=width-10,y0=10,y1=height-30;
+0210 |   const x=i=>x0+(total<=1?.5:i/(total-1))*(x1-x0);
+0211 |   const y=v=>y1-(v-min)/(max-min)*(y1-y0);
+0212 |   ctx.font='11px sans-serif';
+0213 |   for(let j=0;j<5;j++){
+0214 |     const v=min+(max-min)*j/4, yy=y(v);
+0215 |     ctx.beginPath();ctx.strokeStyle='#29414d';ctx.lineWidth=.6;
+0216 |     ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke();
+0217 |     ctx.fillStyle='#a3b6c2';ctx.fillText('R$'+v.toFixed(0),2,yy+4);
+0218 |   }
+0219 |   const lines=[
+0220 |     {field:'cashBenchmarkVirtual',stroke:'#f4c778'},
+0221 |     {field:'exposureMatchedBTC',stroke:'#c5a7ed'},
+0222 |     {field:'equalWeightFive',stroke:'#ecaa74'},
+0223 |     {field:'btcBenchmarkVirtual',stroke:'#7daffa'},
+0224 |     {field:'equityVirtual',stroke:'#66e4b6'}
+0225 |   ];
+0226 |   if(total){
+0227 |     for(const line of lines){
+0228 |       ctx.beginPath();ctx.strokeStyle=line.stroke;ctx.fillStyle=line.stroke;
+0229 |       ctx.lineWidth=line.field==='equityVirtual'?2.8:1.7;
+0230 |       series.forEach((a,i)=>i?ctx.lineTo(x(i),y(a[line.field])):ctx.moveTo(x(i),y(a[line.field])));
+0231 |       if(total===1){ctx.arc(x(0),y(series[0][line.field]),3,0,Math.PI*2);ctx.fill()}
+0232 |       else ctx.stroke();
+0233 |     }
+0234 |   }else{
+0235 |     ctx.fillStyle='#a3b6c2';ctx.fillText('Aguardando o primeiro evento do GitHub Actions...',x0+12,height/2);
+0236 |   }
+0237 |   if(total){
+0238 |     ctx.fillStyle='#a3b6c2';
+0239 |     const date=state.events.at(-1).recordedAtUTC.slice(0,10);
+0240 |     ctx.fillText('Último '+date,x0,y1+20);
+0241 |   }
+0242 | }
+0243 | async function update(){
+0244 |   if(busy)return;
+0245 |   busy=true;$('refreshBtn').disabled=true;
+0246 |   $('stateStatus').className='statusline';
+0247 |   $('stateStatus').textContent='Consultando registro público do GitHub e verificando os hashes...';
+0248 |   try{
+0249 |     const s=await dataFromGitHub();
+0250 |     if(!window.crypto?.subtle)throw Error('Este navegador não permite verificar SHA-256 em conexão segura');
+0251 |     await audit(s);
+0252 |     current=s;loadedAt=Date.now();
+0253 |     metrics(s);
+0254 |   }catch(e){error('Falha ao consultar/validar histórico: '+e.message)}
+0255 |   finally{busy=false;$('refreshBtn').disabled=false}
+0256 | }
+0257 | $('refreshBtn').addEventListener('click',update);
+0258 | window.addEventListener('resize',()=>{if(current)draw(current)});
+0259 | update();
+0260 | })();
+0261 | 
+========== FIM: v4-1/app.js ==========
+
+
+========== ARQUIVO 6/9 | INÍCIO: v4-1/index.html | 191 linhas ==========
+0001 | <!doctype html>
+0002 | <html lang="pt-BR">
+0003 | <head>
+0004 | <meta charset="utf-8">
+0005 | <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+0006 | <meta name="theme-color" content="#071017">
+0007 | <meta name="description" content="Rotation Lab V4.1: acompanhamento prospectivo com GitHub Actions, dados públicos Binance, capital virtual e trilha de auditoria.">
+0008 | <title>Rotation Lab V4.1 — Forward Paper Monitor</title>
+0009 | <style>
+0010 | :root{color-scheme:dark;--bg:#071017;--panel:#0e1b25;--panel2:#122531;--border:#27404b;--txt:#e9f3f5;--muted:#a4b6c2;--green:#63e1ae;--red:#fa939a;--blue:#79b8ec;--yellow:#f9c77c}
+0011 | *{box-sizing:border-box}
+0012 | body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 80% -5%,#193d47 0%,#071017 45%);color:var(--txt);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif}
+0013 | main{width:min(1100px,100%);margin:0 auto;padding:20px 15px 55px}
+0014 | header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-bottom:20px}
+0015 | .brand{display:flex;align-items:center;gap:12px;font-size:19px;font-weight:830;letter-spacing:.5px}
+0016 | .logo{width:41px;height:41px;display:grid;place-items:center;border-radius:13px;background:#183d34;border:1px solid #3f9279;font-size:25px}
+0017 | .brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:1px;font-weight:600}
+0018 | .chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:750}
+0019 | .chip.blue{color:#ace0f9;border-color:#315669;background:#132b39}
+0020 | .chip.safe{color:#95f0ca;border-color:#315d4c;background:#102b23}
+0021 | h1{font-size:clamp(25px,5vw,41px);line-height:1.09;letter-spacing:-1px;margin:9px 0 10px}
+0022 | h2{font-size:20px;margin:0 0 7px}
+0023 | h3{font-size:15px;margin:0 0 10px}
+0024 | p{margin:0 0 10px}
+0025 | .eyebrow{color:var(--green);font-size:11px;font-weight:800;letter-spacing:1.5px}
+0026 | .muted{color:var(--muted)}
+0027 | .hero{padding:25px 23px;border:1px solid var(--border);background:linear-gradient(120deg,#132c33,#0b1c26 55%);border-radius:17px;margin-bottom:17px}
+0028 | .hero p{max-width:800px;color:#b8cbd1}
+0029 | .actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:15px}
+0030 | .btn{font:inherit;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:43px;padding:10px 14px;text-decoration:none;border-radius:11px;border:1px solid #36515c;background:#1a303d;color:#eaf5f9;font-weight:730;cursor:pointer}
+0031 | .btn.primary{background:#65ddaf;border-color:#65ddaf;color:#07271c}
+0032 | .btn:active{transform:translateY(1px)}
+0033 | .note{padding:11px 13px;border-radius:11px;background:#241f1c;border:1px solid #594a37;color:#efcc9b;font-size:12px;line-height:1.6;margin:15px 0}
+0034 | .section{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:19px;margin:15px 0}
+0035 | .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+0036 | .metric{background:var(--panel2);border:1px solid #28424e;border-radius:12px;padding:13px;min-width:0}
+0037 | .metric .label{font-size:11px;color:var(--muted);min-height:27px}
+0038 | .metric .big{font-size:clamp(18px,2.7vw,29px);font-weight:830;letter-spacing:-.6px;margin:8px 0 2px;white-space:nowrap}
+0039 | .metric .sub{font-size:11px;color:var(--muted)}
+0040 | .up{color:var(--green)}.down{color:var(--red)}
+0041 | .statusline{border:1px solid #34505d;padding:10px 12px;background:#122733;border-radius:10px;margin:11px 0;color:#bad0dc}
+0042 | .statusline.bad{border-color:#753c45;background:#28181e;color:#ffb5be}
+0043 | .statusline.good{border-color:#2f775f;background:#122b24;color:#a5efcf}
+0044 | .mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+0045 | .tile{border:1px solid #29434e;background:#0e1d27;border-radius:12px;padding:13px}
+0046 | .tile strong{display:block;margin-bottom:4px}
+0047 | small{font-size:11px}
+0048 | .legend{display:flex;flex-wrap:wrap;gap:9px 16px;margin:10px 0;font-size:11px;color:#bbcbd2}
+0049 | .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+0050 | .chartbox{border:1px solid #203843;background:#091922;border-radius:13px;padding:10px;overflow:hidden}
+0051 | canvas{display:block;width:100%;height:280px}
+0052 | .scroll{overflow-x:auto;margin-top:12px;border:1px solid #26414c;border-radius:11px}
+0053 | table{border-collapse:collapse;width:100%;min-width:720px;font-size:12px}
+0054 | thead{background:#142b38;color:#bdd0d8}
+0055 | th,td{padding:11px;border-bottom:1px solid #243e47;text-align:left;vertical-align:top}
+0056 | tr:last-child td{border-bottom:none}
+0057 | td:nth-child(3),td:nth-child(4),td:nth-child(5){text-align:right;white-space:nowrap}
+0058 | th:nth-child(3),th:nth-child(4),th:nth-child(5){text-align:right}
+0059 | details{padding:12px 13px;border:1px solid #35515d;border-radius:10px;margin-top:12px}
+0060 | summary{cursor:pointer;font-weight:750}
+0061 | a{color:#8dd9ed}
+0062 | footer{padding:18px 2px;color:var(--muted);font-size:11px;line-height:1.65}
+0063 | .gridline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+0064 | .gridline .tile{min-height:100px}
+0065 | .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+0066 | @media(max-width:730px){main{padding:14px 11px 42px}.section{padding:15px}.hero{padding:19px 15px}
+0067 | .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.mini-grid{grid-template-columns:1fr}
+0068 | .gridline{grid-template-columns:1fr}.btn{flex:1 1 145px}.metric .big{font-size:23px}}
+0069 | </style>
+0070 | </head>
+0071 | <body>
+0072 | <main>
+0073 |   <header>
+0074 |     <div class="brand"><div class="logo">↗</div><div>ROTATION LAB <span style="color:#65ddaf">V4</span><small>AUDITED PAPER MONITOR · GITHUB</small></div></div>
+0075 |     <div class="actions" style="margin:0"><span class="chip safe">● SEM DINHEIRO REAL</span><span class="chip blue">4H · SHA-256</span></div>
+0076 |   </header>
+0077 |   <section class="hero">
+0078 |     <div class="eyebrow">PESQUISA PROSPECTIVA / SEM HISTÓRICO INVENTADO</div>
+0079 |     <h1>O mercado decide. Registramos também sinais que não foram negociados.</h1>
+0080 |     <p>A V4.1 confirma os preços com duas leituras do ticker, bookTicker e candle de 1 minuto; bloqueia compras com sinais atrasados e registra sinais-sombra dos cinco ativos. Tudo é virtual, público e auditável.</p>
+0081 |     <div class="actions">
+0082 |       <button class="btn primary" type="button" id="refreshBtn">↻ Consultar últimos dados</button>
+0083 |       <a class="btn" target="_blank" rel="noopener noreferrer" href="https://github.com/veloraspaces0/rotation-lab-v1/actions/workflows/rotation-lab-v4-1.yml">▶ Iniciar / acompanhar workflow</a>
+0084 |     </div>
+0085 |     <div id="stateStatus" class="statusline" role="status">Lendo registro público do GitHub...</div>
+0086 |     <div id="updateInfo" class="muted" style="font-size:12px">O GitHub tenta três execuções por período de 4h. O iPhone apenas consulta os resultados, sem operar.</div>
+0087 |   </section>
+0088 |   <div class="metrics">
+0089 |     <div class="metric"><div class="label">V4 · Patrimônio virtual</div><div class="big" id="equity">R$ 50,00</div><div class="sub" id="equityReturn">Ainda não iniciado</div></div>
+0090 |     <div class="metric"><div class="label">Manter BTC · com custos</div><div class="big" id="btc">—</div><div class="sub" id="btcReturn">Sem referência inicial</div></div>
+0091 |     <div class="metric"><div class="label">100% em caixa</div><div class="big" id="cash">R$ 50,00</div><div class="sub">Sem operações ou rendimento</div></div>
+0092 |     <div class="metric"><div class="label">Queda desde o pico · V4</div><div class="big" id="drawdown">—</div><div class="sub">Freio da carteira, não garantido</div></div>
+0093 |   </div>
+0094 |   <section class="section">
+0095 |     <div class="eyebrow">BENCHMARKS ADICIONAIS / MESMO MARCO INICIAL</div>
+0096 |     <h2>Comparar riscos mais próximos</h2>
+0097 |     <p class="muted">Além de manter 100% BTC e 100% em caixa, agora comparamos a alocação hipotética de 65% BTC / 35% caixa e uma carteira de cinco moedas em partes iguais. São referências construídas a partir do marco inicial da V4.1, com custos estimados e sem rebalanceamentos.</p>
+0098 |     <div class="mini-grid">
+0099 |       <div class="tile"><strong>65% BTC / 35% caixa</strong><div id="benchmarkMatched" style="font-size:24px;font-weight:830">—</div><small id="benchmarkMatchedReturn" class="muted">Aguardando marco inicial</small></div>
+0100 |       <div class="tile"><strong>20% cada: BTC / ETH / SOL / BNB / XRP</strong><div id="benchmarkEqual" style="font-size:24px;font-weight:830">—</div><small id="benchmarkEqualReturn" class="muted">Aguardando marco inicial</small></div>
+0101 |     </div>
+0102 |     <div class="note">As duas referências ficam expostas ao mercado desde o início, enquanto a V4.1 só entra com sinal. Portanto, esta comparação acrescenta contexto, mas não isola totalmente habilidade da estratégia. Cotações são em USDT; R$ é apenas unidade contábil.</div>
+0103 |   </section>
+0104 |   <section class="section">
+0105 |     <div class="eyebrow">01 / LINHA DO TEMPO</div>
+0106 |     <h2>Comparação prospectiva</h2>
+0107 |     <p class="muted">Cada ponto corresponde a uma observação realmente gravada. Não há curvas retroativas. BTC inclui custos estimados de compra e venda.</p>
+0108 |     <div class="legend">
+0109 |       <span><i style="background:#66e4b6"></i>V4</span>
+0110 |       <span><i style="background:#7daffa"></i>Manter BTC</span>
+0111 |       <span><i style="background:#c5a7ed"></i>65% BTC / 35% caixa</span>
+0112 |       <span><i style="background:#ecaa74"></i>20% cada moeda</span>
+0113 |       <span><i style="background:#f4c778"></i>Caixa</span>
+0114 |     </div>
+0115 |     <div class="chartbox"><canvas id="equityChart" aria-label="Evolução prospectiva de capital simulado, BTC e caixa"></canvas></div>
+0116 |     <div class="mini-grid">
+0117 |       <div class="tile"><strong>Última decisão</strong><span id="lastDecision" class="muted">Aguardando primeira execução.</span></div>
+0118 |       <div class="tile"><strong>Posição virtual atual</strong><span id="position" class="muted">Sem posição.</span></div>
+0119 |     </div>
+0120 |   </section>
+0121 |   <section class="section">
+0122 |     <div class="eyebrow">02 / AUDITORIA</div>
+0123 |     <h2>Registro cronológico</h2>
+0124 |     <p class="muted">Eventos de candles novos, com horário UTC, tipo de decisão, patrimônio e encadeamento SHA-256. O GitHub mantém commits para inspeção; o hash não substitui uma assinatura digital.</p>
+0125 |     <div class="statusline" id="auditStatus">Aguardando verificação.</div>
+0126 |     <div class="gridline">
+0127 |       <div class="tile"><strong id="eventCount">0 eventos</strong><small class="muted">Registro acumulado</small></div>
+0128 |       <div class="tile"><strong id="tradeCount">0 saídas</strong><small class="muted">Posições encerradas</small></div>
+0129 |       <div class="tile"><strong id="eventTime">—</strong><small class="muted">Último registro UTC</small></div>
+0130 |     </div>
+0131 |     <div class="scroll">
+0132 |       <table aria-label="Últimos eventos do teste V4">
+0133 |         <thead><tr><th>Registro UTC</th><th>Decisão</th><th>V4</th><th>BTC</th><th>Motivo</th></tr></thead>
+0134 |         <tbody id="eventRows"><tr><td colspan="5">Aguardando eventos.</td></tr></tbody>
+0135 |       </table>
+0136 |     </div>
+0137 |     <div class="actions">
+0138 |       <a class="btn" target="_blank" rel="noopener noreferrer" href="https://github.com/veloraspaces0/rotation-lab-v1/blob/main/v4-1/state.json">Ver JSON e histórico de commits</a>
+0139 |       <a class="btn" target="_blank" rel="noopener noreferrer" href="https://github.com/veloraspaces0/rotation-lab-v1/actions">Ver execuções do GitHub Actions</a>
+0140 |     </div>
+0141 |   </section>
+0142 | 
+0143 |   <section class="section">
+0144 |     <div class="eyebrow">03 / PESQUISA SEM EXECUÇÃO</div>
+0145 |     <h2>Registro-sombra dos cinco ativos</h2>
+0146 |     <p class="muted">BTC, ETH, SOL, BNB e XRP são observados mesmo quando há freio, cooldown ou mínimo de ordem. Retornos futuros são acrescentados <strong>somente quando os respectivos candles fecham</strong>.</p>
+0147 |     <div class="gridline">
+0148 |       <div class="tile"><strong id="shadowCount">0 observações</strong><small class="muted">Sinais de todos os ativos</small></div>
+0149 |       <div class="tile"><strong id="shadowEligible">0 elegíveis</strong><small class="muted">Filtros de entrada confirmados</small></div>
+0150 |       <div class="tile"><strong id="shadowSettled">0 resultados maduros</strong><small class="muted">Horizontes 1, 3, 6 e 12 candles</small></div>
+0151 |     </div>
+0152 |     <div class="scroll">
+0153 |       <table aria-label="Estudo de retornos prospectivos por horizonte">
+0154 |         <thead><tr><th>Horizonte</th><th>Sinais elegíveis</th><th>Retorno líquido teórico médio</th><th>Todos os ativos</th><th>Limitação</th></tr></thead>
+0155 |         <tbody id="shadowRows"><tr><td colspan="5">Aguardando resultados prospectivos.</td></tr></tbody>
+0156 |       </table>
+0157 |     </div>
+0158 |     <p class="muted" style="margin-top:10px" id="shadowNote">Retornos teóricos close-to-close não são ordens executáveis. Sinais próximos são correlacionados e não equivalem a observações independentes.</p>
+0159 |   </section>
+0160 |   <section class="section">
+0161 |     <div class="eyebrow">04 / QUALIDADE DA COLETA</div>
+0162 |     <h2>Preços auditados e latência</h2>
+0163 |     <div class="gridline">
+0164 |       <div class="tile"><strong id="qualitySource">—</strong><small class="muted">Fonte pública consultada</small></div>
+0165 |       <div class="tile"><strong id="qualityLag">—</strong><small class="muted">Atraso após o último candle fechado</small></div>
+0166 |       <div class="tile"><strong id="qualityStatus">Aguardando</strong><small class="muted">Ticker duplo, livro e minuto</small></div>
+0167 |     </div>
+0168 |     <p class="muted" id="freezeStatus" style="margin-top:11px">O marco inicial congela os hashes da lógica, do coletor, do workflow e da configuração.</p>
+0169 |     <div class="note">A validação usa endpoints diferentes da mesma Binance, não provedores independentes. Movimentos reais extremos podem ser bloqueados por segurança. O freio continua permanente na carteira protegida; os sinais-sombra continuam sendo observados.</div>
+0170 |   </section>
+0171 |   <section class="section">
+0172 |     <div class="eyebrow">05 / INÍCIO E REGRAS FIXAS</div>
+0173 |     <h2>Como funciona o monitor</h2>
+0174 |     <div class="gridline">
+0175 |       <div class="tile"><strong>1. Ativar</strong><p class="muted">Em GitHub Actions, abra “Rotation Lab V4.1 - Paper Forward” e selecione “Run workflow”. Se a primeira execução falhar, consulte os logs.</p></div>
+0176 |       <div class="tile"><strong>2. Registrar</strong><p class="muted">A primeira execução bem-sucedida cria só o marco inicial. Depois, a rotina tenta registrar uma observação a cada 4 horas.</p></div>
+0177 |       <div class="tile"><strong>3. Analisar</strong><p class="muted">Volte aqui para consultar. No ChatGPT, diga “Analise V4”: consigo ler o mesmo JSON no seu repositório.</p></div>
+0178 |     </div>
+0179 |     <details><summary>Ver regras congeladas da V4</summary>
+0180 |       <p style="margin-top:12px">Capital de R$ 50 virtuais; alocação de até 65% do caixa na compra; mínimo ilustrativo de R$ 30; meta de 2%; confirmação em 3 candles fechados; filtros de tendência BTC e moeda; stop estimado de 2,5% a 5%; espera de 12 candles após venda; freio permanente após queda acumulada de 6% do pico. Custos estimados de 0,1% de taxa mais 0,05% de slippage por lado.</p>
+0181 |       <p class="muted">O motor congela um hash da lógica e da configuração no marco inicial. Uma modificação posterior impede novas operações até que seja criada outra versão, evitando mudanças silenciosas de estratégia.</p>
+0182 |     </details>
+0183 |     <div class="note">Os dados públicos não representam execução real. O saldo em R$ é apenas uma unidade contábil: não há conversão USDT/BRL, impostos, execução real, livro de ordens ou garantias de perda limitada. Se o GitHub Actions atrasar ou a API falhar, nenhuma ordem fictícia é preenchida retroativamente.</div>
+0184 |   </section>
+0185 |   <footer>Rotation Lab V4.1 · Protótipo educacional independente · Binance Spot Market Data pública e somente leitura · GitHub Actions pode atrasar, falhar ou ser desabilitado após inatividade no repositório público. Este painel apenas consulta um histórico público: não observa sua conta e não opera criptomoedas.</footer>
+0186 | </main>
+0187 | <script src="./analysis.js?v=1"></script>
+0188 | <script src="./app.js?v=2"></script>
+0189 | </body>
+0190 | </html>
+0191 | 
+========== FIM: v4-1/index.html ==========
+
+
+========== ARQUIVO 7/9 | INÍCIO: v4-1/state.json | 890 linhas ==========
+0001 | {
+0002 |   "schema": 1,
+0003 |   "config": {
+0004 |     "strategyId": "rotation-v4-1-audited-2026-11",
+0005 |     "initialCapitalVirtual": 50,
+0006 |     "maxExposure": 0.65,
+0007 |     "riskBudget": 0.03,
+0008 |     "minVirtualOrder": 30,
+0009 |     "feePctPerSide": 0.1,
+0010 |     "slippagePctPerSide": 0.05,
+0011 |     "btcFast": 36,
+0012 |     "btcSlow": 72,
+0013 |     "assetFast": 12,
+0014 |     "assetSlow": 36,
+0015 |     "confirmationBars": 3,
+0016 |     "lookback": 12,
+0017 |     "minimumStrength": 1,
+0018 |     "maxExtension": 0.045,
+0019 |     "volatilityBars": 20,
+0020 |     "volatilityStopFactor": 2.5,
+0021 |     "minimumStop": 0.025,
+0022 |     "maximumStop": 0.05,
+0023 |     "takeProfit": 0.02,
+0024 |     "cooldownBars": 12,
+0025 |     "circuitDrawdown": 0.06
+0026 |   },
+0027 |   "events": [
+0028 |     {
+0029 |       "seq": 1,
+0030 |       "prevHash": "GENESIS",
+0031 |       "type": "BASELINE",
+0032 |       "recordedAtUTC": "2026-11-03T23:16:40.097Z",
+0033 |       "candleOpenMs": 1793721600000,
+0034 |       "payload": {
+0035 |         "coreHash": "745845a87ad4059ea9d6873e5d6e0646efaa86836fe8b9356a7ecbbc3da501c8",
+0036 |         "configHash": "4c7af53c936bb38373c8325f7cef96111c479b67a611e2c975f5ac82a70b82d5",
+0037 |         "inputSnapshot": {
+0038 |           "lastCandleUTC": "2026-11-03T16:00:00.000Z",
+0039 |           "firstCandleUTC": "2026-10-14T20:00:00.000Z",
+0040 |           "btcRegimeLast3": [
+0041 |             false,
+0042 |             false,
+0043 |             false
+0044 |           ],
+0045 |           "btcSmaFast": 78129.7875,
+0046 |           "btcSmaSlow": 79425.0644444,
+0047 |           "indicators": {
+0048 |             "BTC": {
+0049 |               "candleClose": 77612,
+0050 |               "smaFast": 77550.2491667,
+0051 |               "smaSlow": 78129.7875,
+0052 |               "momentum": -0.3897765,
+0053 |               "volatility": 0.0037188,
+0054 |               "validLast3": false,
+0055 |               "passedEntry": false,
+0056 |               "candleSignals": [
+0057 |                 {
+0058 |                   "assetTrend": false,
+0059 |                   "strengthOK": false
+0060 |                 },
+0061 |                 {
+0062 |                   "assetTrend": false,
+0063 |                   "strengthOK": false
+0064 |                 },
+0065 |                 {
+0066 |                   "assetTrend": false,
+0067 |                   "strengthOK": false
+0068 |                 }
+0069 |               ],
+0070 |               "closeHistory": [
+0071 |                 81682.01,
+0072 |                 80928,
+0073 |                 81541.34,
+0074 |                 80980.01,
+0075 |                 82418,
+0076 |                 82384.73,
+0077 |                 82245.93,
+0078 |                 82126.01,
+0079 |                 82290,
+0080 |                 82640.73,
+0081 |                 81353.14,
+0082 |                 81589.86,
+0083 |                 81615.64,
+0084 |                 81573.58,
+0085 |                 81738.87,
+0086 |                 81576.33,
+0087 |                 81355.2,
+0088 |                 81600,
+0089 |                 81491.04,
+0090 |                 81960,
+0091 |                 81681.14,
+0092 |                 82069.72,
+0093 |                 81178.18,
+0094 |                 80880.02,
+0095 |                 82116,
+0096 |                 82530.82,
+0097 |                 82716.68,
+0098 |                 82356.86,
+0099 |                 81942.44,
+0100 |                 81880.82,
+0101 |                 81938.4,
+0102 |                 82138.42,
+0103 |                 81567.39,
+0104 |                 81504.32,
+0105 |                 82617.68,
+0106 |                 82606.01,
+0107 |                 83028.15,
+0108 |                 82733.82,
+0109 |                 83153.78,
+0110 |                 83500.01,
+0111 |                 84540.01,
+0112 |                 84489.59,
+0113 |                 84093.42,
+0114 |                 82925.14,
+0115 |                 82239.46,
+0116 |                 81750.01,
+0117 |                 81681.69,
+0118 |                 81494.39,
+0119 |                 81416.09,
+0120 |                 81889.32,
+0121 |                 81579.52,
+0122 |                 81726.1,
+0123 |                 81692.01,
+0124 |                 81282.33,
+0125 |                 81189.43,
+0126 |                 80977.92,
+0127 |                 80732.01,
+0128 |                 80599.41,
+0129 |                 79803.75,
+0130 |                 80489.11,
+0131 |                 80888.16,
+0132 |                 80862.98,
+0133 |                 80672.83,
+0134 |                 80580.97,
+0135 |                 80636.11,
+0136 |                 80567.47,
+0137 |                 80154.09,
+0138 |                 79598.02,
+0139 |                 80046.71,
+0140 |                 80416.01,
+0141 |                 80427.69,
+0142 |                 80020.01,
+0143 |                 80150.56,
+0144 |                 79819.56,
+0145 |                 79806.72,
+0146 |                 79910.01,
+0147 |                 80562.27,
+0148 |                 80817.76,
+0149 |                 80909.77,
+0150 |                 81145.11,
+0151 |                 81082,
+0152 |                 81341.96,
+0153 |                 80553.13,
+0154 |                 81585.39,
+0155 |                 81343.5,
+0156 |                 79858.01,
+0157 |                 79861.89,
+0158 |                 80170.02,
+0159 |                 81777.74,
+0160 |                 80848.64,
+0161 |                 77991.89,
+0162 |                 78235.15,
+0163 |                 78185.38,
+0164 |                 77382.01,
+0165 |                 77622,
+0166 |                 76942.57,
+0167 |                 77368.77,
+0168 |                 77170.74,
+0169 |                 77356,
+0170 |                 77618.97,
+0171 |                 77622.01,
+0172 |                 77588.83,
+0173 |                 77582.02,
+0174 |                 77802,
+0175 |                 77991.28,
+0176 |                 77962.62,
+0177 |                 77988.03,
+0178 |                 77799.29,
+0179 |                 78354,
+0180 |                 78634.01,
+0181 |                 78113.85,
+0182 |                 77894.16,
+0183 |                 77519.24,
+0184 |                 77096.29,
+0185 |                 76816,
+0186 |                 76937.05,
+0187 |                 76829.55,
+0188 |                 77108.37,
+0189 |                 77688.47,
+0190 |                 77612
+0191 |               ]
+0192 |             },
+0193 |             "ETH": {
+0194 |               "candleClose": 2287.04,
+0195 |               "smaFast": 2275.2,
+0196 |               "smaSlow": 2272.7738889,
+0197 |               "momentum": 0.9713696,
+0198 |               "volatility": 0.0062242,
+0199 |               "validLast3": false,
+0200 |               "passedEntry": false,
+0201 |               "candleSignals": [
+0202 |                 {
+0203 |                   "assetTrend": true,
+0204 |                   "strengthOK": false
+0205 |                 },
+0206 |                 {
+0207 |                   "assetTrend": false,
+0208 |                   "strengthOK": true
+0209 |                 },
+0210 |                 {
+0211 |                   "assetTrend": false,
+0212 |                   "strengthOK": false
+0213 |                 }
+0214 |               ],
+0215 |               "closeHistory": [
+0216 |                 2421.6,
+0217 |                 2359.63,
+0218 |                 2380.06,
+0219 |                 2363.31,
+0220 |                 2440.64,
+0221 |                 2452.9,
+0222 |                 2442.08,
+0223 |                 2440.22,
+0224 |                 2455.07,
+0225 |                 2477.77,
+0226 |                 2431.32,
+0227 |                 2413.21,
+0228 |                 2423.54,
+0229 |                 2428.06,
+0230 |                 2435.04,
+0231 |                 2434.2,
+0232 |                 2410.57,
+0233 |                 2418.65,
+0234 |                 2402.82,
+0235 |                 2425.53,
+0236 |                 2408.62,
+0237 |                 2418.23,
+0238 |                 2379.6,
+0239 |                 2338.25,
+0240 |                 2410.31,
+0241 |                 2424.51,
+0242 |                 2430.86,
+0243 |                 2420.04,
+0244 |                 2394.29,
+0245 |                 2395.04,
+0246 |                 2408.01,
+0247 |                 2415.01,
+0248 |                 2391.32,
+0249 |                 2384.68,
+0250 |                 2441.16,
+0251 |                 2437.92,
+0252 |                 2449.2,
+0253 |                 2444.3,
+0254 |                 2456.24,
+0255 |                 2469.37,
+0256 |                 2512.54,
+0257 |                 2494.54,
+0258 |                 2473.76,
+0259 |                 2444.66,
+0260 |                 2430.27,
+0261 |                 2400.34,
+0262 |                 2398.91,
+0263 |                 2387.2,
+0264 |                 2389.14,
+0265 |                 2410.73,
+0266 |                 2401.48,
+0267 |                 2403.04,
+0268 |                 2407.85,
+0269 |                 2394.51,
+0270 |                 2387.6,
+0271 |                 2382.82,
+0272 |                 2375.01,
+0273 |                 2365.74,
+0274 |                 2306.41,
+0275 |                 2339.62,
+0276 |                 2358.82,
+0277 |                 2362.8,
+0278 |                 2347.99,
+0279 |                 2339.85,
+0280 |                 2344.44,
+0281 |                 2351.05,
+0282 |                 2329.87,
+0283 |                 2303.1,
+0284 |                 2318.71,
+0285 |                 2334.05,
+0286 |                 2328.26,
+0287 |                 2318.2,
+0288 |                 2324.55,
+0289 |                 2314.88,
+0290 |                 2314.9,
+0291 |                 2316.04,
+0292 |                 2347.18,
+0293 |                 2347.98,
+0294 |                 2350.36,
+0295 |                 2360.63,
+0296 |                 2361.36,
+0297 |                 2361.64,
+0298 |                 2334.87,
+0299 |                 2371.51,
+0300 |                 2359.68,
+0301 |                 2309.03,
+0302 |                 2310.36,
+0303 |                 2325.28,
+0304 |                 2369.06,
+0305 |                 2336.89,
+0306 |                 2253.13,
+0307 |                 2237.82,
+0308 |                 2237.07,
+0309 |                 2236.62,
+0310 |                 2227.44,
+0311 |                 2240.32,
+0312 |                 2245.54,
+0313 |                 2240,
+0314 |                 2244.04,
+0315 |                 2248.64,
+0316 |                 2250.88,
+0317 |                 2254.68,
+0318 |                 2255.66,
+0319 |                 2268.43,
+0320 |                 2270.3,
+0321 |                 2270.32,
+0322 |                 2266.97,
+0323 |                 2259.3,
+0324 |                 2275.31,
+0325 |                 2309.25,
+0326 |                 2284.62,
+0327 |                 2286.62,
+0328 |                 2273.41,
+0329 |                 2254.18,
+0330 |                 2253.29,
+0331 |                 2253.49,
+0332 |                 2258.64,
+0333 |                 2267.14,
+0334 |                 2299.41,
+0335 |                 2287.04
+0336 |               ]
+0337 |             },
+0338 |             "SOL": {
+0339 |               "candleClose": 93.28,
+0340 |               "smaFast": 93.3016667,
+0341 |               "smaSlow": 95.7719444,
+0342 |               "momentum": -1.0296988,
+0343 |               "volatility": 0.0073178,
+0344 |               "validLast3": false,
+0345 |               "passedEntry": false,
+0346 |               "candleSignals": [
+0347 |                 {
+0348 |                   "assetTrend": false,
+0349 |                   "strengthOK": false
+0350 |                 },
+0351 |                 {
+0352 |                   "assetTrend": false,
+0353 |                   "strengthOK": false
+0354 |                 },
+0355 |                 {
+0356 |                   "assetTrend": false,
+0357 |                   "strengthOK": false
+0358 |                 }
+0359 |               ],
+0360 |               "closeHistory": [
+0361 |                 104.29,
+0362 |                 102.47,
+0363 |                 103.28,
+0364 |                 102.18,
+0365 |                 106.08,
+0366 |                 106.03,
+0367 |                 105.44,
+0368 |                 105.33,
+0369 |                 106.39,
+0370 |                 106.61,
+0371 |                 103.77,
+0372 |                 103.53,
+0373 |                 104.45,
+0374 |                 104.99,
+0375 |                 105.09,
+0376 |                 104.67,
+0377 |                 103.62,
+0378 |                 104.11,
+0379 |                 103.47,
+0380 |                 104.52,
+0381 |                 103.31,
+0382 |                 104,
+0383 |                 102.23,
+0384 |                 100.83,
+0385 |                 104.11,
+0386 |                 105.25,
+0387 |                 105.65,
+0388 |                 104.69,
+0389 |                 104.15,
+0390 |                 104.03,
+0391 |                 105.08,
+0392 |                 105.34,
+0393 |                 104.41,
+0394 |                 104.12,
+0395 |                 105.89,
+0396 |                 106.1,
+0397 |                 106.54,
+0398 |                 105.86,
+0399 |                 106.83,
+0400 |                 106.87,
+0401 |                 108.49,
+0402 |                 108.31,
+0403 |                 106.97,
+0404 |                 105.52,
+0405 |                 104.44,
+0406 |                 104.46,
+0407 |                 104.61,
+0408 |                 103.63,
+0409 |                 103.65,
+0410 |                 104.25,
+0411 |                 104.32,
+0412 |                 104.54,
+0413 |                 104.77,
+0414 |                 103.56,
+0415 |                 102.85,
+0416 |                 102.66,
+0417 |                 101.91,
+0418 |                 101.52,
+0419 |                 99.78,
+0420 |                 101.17,
+0421 |                 102.38,
+0422 |                 102.43,
+0423 |                 101.64,
+0424 |                 101.33,
+0425 |                 101.63,
+0426 |                 101.79,
+0427 |                 101.4,
+0428 |                 100.21,
+0429 |                 100.72,
+0430 |                 101.71,
+0431 |                 101.9,
+0432 |                 100.49,
+0433 |                 100.95,
+0434 |                 100.17,
+0435 |                 100.08,
+0436 |                 100.13,
+0437 |                 100.96,
+0438 |                 101.16,
+0439 |                 101.35,
+0440 |                 102.03,
+0441 |                 102.33,
+0442 |                 102.75,
+0443 |                 101.05,
+0444 |                 103.06,
+0445 |                 102.44,
+0446 |                 99.69,
+0447 |                 99.77,
+0448 |                 100.38,
+0449 |                 102.7,
+0450 |                 99.82,
+0451 |                 95.64,
+0452 |                 97.25,
+0453 |                 97.35,
+0454 |                 96.57,
+0455 |                 94.89,
+0456 |                 94.79,
+0457 |                 96.38,
+0458 |                 96.26,
+0459 |                 95.64,
+0460 |                 95.91,
+0461 |                 95.98,
+0462 |                 95.85,
+0463 |                 95.54,
+0464 |                 95.66,
+0465 |                 95.6,
+0466 |                 95.31,
+0467 |                 94.78,
+0468 |                 93.97,
+0469 |                 94.53,
+0470 |                 95.59,
+0471 |                 94.28,
+0472 |                 94.09,
+0473 |                 93.55,
+0474 |                 91.77,
+0475 |                 91.98,
+0476 |                 92.15,
+0477 |                 92.11,
+0478 |                 92.54,
+0479 |                 93.75,
+0480 |                 93.28
+0481 |               ]
+0482 |             },
+0483 |             "BNB": {
+0484 |               "candleClose": 696.94,
+0485 |               "smaFast": 702.2158333,
+0486 |               "smaSlow": 711.7094444,
+0487 |               "momentum": -1.8899699,
+0488 |               "volatility": 0.0049935,
+0489 |               "validLast3": false,
+0490 |               "passedEntry": false,
+0491 |               "candleSignals": [
+0492 |                 {
+0493 |                   "assetTrend": false,
+0494 |                   "strengthOK": false
+0495 |                 },
+0496 |                 {
+0497 |                   "assetTrend": false,
+0498 |                   "strengthOK": false
+0499 |                 },
+0500 |                 {
+0501 |                   "assetTrend": false,
+0502 |                   "strengthOK": false
+0503 |                 }
+0504 |               ],
+0505 |               "closeHistory": [
+0506 |                 730.56,
+0507 |                 715.66,
+0508 |                 721.14,
+0509 |                 720.87,
+0510 |                 733.83,
+0511 |                 733.09,
+0512 |                 729.66,
+0513 |                 729.07,
+0514 |                 731.11,
+0515 |                 732.12,
+0516 |                 723.25,
+0517 |                 721.14,
+0518 |                 721.58,
+0519 |                 722.53,
+0520 |                 722.55,
+0521 |                 721.09,
+0522 |                 714.89,
+0523 |                 717.72,
+0524 |                 718.02,
+0525 |                 722.51,
+0526 |                 720.87,
+0527 |                 723.43,
+0528 |                 713.03,
+0529 |                 706.8,
+0530 |                 723.36,
+0531 |                 726.55,
+0532 |                 726.85,
+0533 |                 725.88,
+0534 |                 724.77,
+0535 |                 726.96,
+0536 |                 732.13,
+0537 |                 730.6,
+0538 |                 728.58,
+0539 |                 728.68,
+0540 |                 734.25,
+0541 |                 739.08,
+0542 |                 741.69,
+0543 |                 740.37,
+0544 |                 747.46,
+0545 |                 746.77,
+0546 |                 749.53,
+0547 |                 749.01,
+0548 |                 746.31,
+0549 |                 742.11,
+0550 |                 737.32,
+0551 |                 733.12,
+0552 |                 731.12,
+0553 |                 731.93,
+0554 |                 731.28,
+0555 |                 739.92,
+0556 |                 744.82,
+0557 |                 747.7,
+0558 |                 748.45,
+0559 |                 741.53,
+0560 |                 739.59,
+0561 |                 739.97,
+0562 |                 735.63,
+0563 |                 731.76,
+0564 |                 721.63,
+0565 |                 730.16,
+0566 |                 740,
+0567 |                 745.47,
+0568 |                 744.49,
+0569 |                 743.54,
+0570 |                 742.69,
+0571 |                 742.28,
+0572 |                 738.69,
+0573 |                 736.55,
+0574 |                 738.66,
+0575 |                 743.43,
+0576 |                 744.68,
+0577 |                 743.05,
+0578 |                 742.88,
+0579 |                 739.21,
+0580 |                 736.42,
+0581 |                 740.36,
+0582 |                 750.1,
+0583 |                 749.11,
+0584 |                 744.94,
+0585 |                 747.27,
+0586 |                 745.94,
+0587 |                 760.86,
+0588 |                 749.76,
+0589 |                 755.18,
+0590 |                 759.85,
+0591 |                 746.94,
+0592 |                 748.47,
+0593 |                 739.84,
+0594 |                 750.12,
+0595 |                 744.89,
+0596 |                 698.46,
+0597 |                 719.9,
+0598 |                 708.09,
+0599 |                 700.11,
+0600 |                 700.23,
+0601 |                 700.71,
+0602 |                 704.42,
+0603 |                 704.45,
+0604 |                 700.16,
+0605 |                 705.34,
+0606 |                 705.42,
+0607 |                 706.12,
+0608 |                 703.95,
+0609 |                 703.47,
+0610 |                 706.78,
+0611 |                 713.56,
+0612 |                 714.85,
+0613 |                 708.82,
+0614 |                 712.69,
+0615 |                 714.39,
+0616 |                 707.85,
+0617 |                 704.76,
+0618 |                 702.07,
+0619 |                 697.45,
+0620 |                 699.25,
+0621 |                 696.88,
+0622 |                 695.16,
+0623 |                 697.66,
+0624 |                 701.49,
+0625 |                 696.94
+0626 |               ]
+0627 |             },
+0628 |             "XRP": {
+0629 |               "candleClose": 1.2775,
+0630 |               "smaFast": 1.2571167,
+0631 |               "smaSlow": 1.2605528,
+0632 |               "momentum": 2.2359372,
+0633 |               "volatility": 0.005114,
+0634 |               "validLast3": false,
+0635 |               "passedEntry": false,
+0636 |               "candleSignals": [
+0637 |                 {
+0638 |                   "assetTrend": false,
+0639 |                   "strengthOK": true
+0640 |                 },
+0641 |                 {
+0642 |                   "assetTrend": false,
+0643 |                   "strengthOK": true
+0644 |                 },
+0645 |                 {
+0646 |                   "assetTrend": false,
+0647 |                   "strengthOK": false
+0648 |                 }
+0649 |               ],
+0650 |               "closeHistory": [
+0651 |                 1.3316,
+0652 |                 1.3039,
+0653 |                 1.3139,
+0654 |                 1.3063,
+0655 |                 1.3391,
+0656 |                 1.3441,
+0657 |                 1.3349,
+0658 |                 1.3336,
+0659 |                 1.3402,
+0660 |                 1.3465,
+0661 |                 1.3089,
+0662 |                 1.2982,
+0663 |                 1.3115,
+0664 |                 1.3087,
+0665 |                 1.3087,
+0666 |                 1.3073,
+0667 |                 1.2931,
+0668 |                 1.3002,
+0669 |                 1.2941,
+0670 |                 1.3037,
+0671 |                 1.2929,
+0672 |                 1.298,
+0673 |                 1.2738,
+0674 |                 1.2605,
+0675 |                 1.3071,
+0676 |                 1.3102,
+0677 |                 1.3137,
+0678 |                 1.3035,
+0679 |                 1.2985,
+0680 |                 1.3011,
+0681 |                 1.3041,
+0682 |                 1.3067,
+0683 |                 1.2972,
+0684 |                 1.2974,
+0685 |                 1.3224,
+0686 |                 1.3291,
+0687 |                 1.3358,
+0688 |                 1.3324,
+0689 |                 1.3465,
+0690 |                 1.3557,
+0691 |                 1.3806,
+0692 |                 1.3889,
+0693 |                 1.3654,
+0694 |                 1.3454,
+0695 |                 1.34,
+0696 |                 1.326,
+0697 |                 1.3222,
+0698 |                 1.3057,
+0699 |                 1.3094,
+0700 |                 1.3221,
+0701 |                 1.3225,
+0702 |                 1.3205,
+0703 |                 1.3133,
+0704 |                 1.3032,
+0705 |                 1.295,
+0706 |                 1.2913,
+0707 |                 1.2852,
+0708 |                 1.2817,
+0709 |                 1.2683,
+0710 |                 1.2887,
+0711 |                 1.2996,
+0712 |                 1.3112,
+0713 |                 1.3019,
+0714 |                 1.3001,
+0715 |                 1.3002,
+0716 |                 1.3002,
+0717 |                 1.2962,
+0718 |                 1.2776,
+0719 |                 1.2788,
+0720 |                 1.2944,
+0721 |                 1.2973,
+0722 |                 1.2937,
+0723 |                 1.3092,
+0724 |                 1.3,
+0725 |                 1.3026,
+0726 |                 1.3029,
+0727 |                 1.321,
+0728 |                 1.3245,
+0729 |                 1.3313,
+0730 |                 1.3372,
+0731 |                 1.329,
+0732 |                 1.3249,
+0733 |                 1.3118,
+0734 |                 1.3356,
+0735 |                 1.326,
+0736 |                 1.2901,
+0737 |                 1.2888,
+0738 |                 1.2915,
+0739 |                 1.3102,
+0740 |                 1.2823,
+0741 |                 1.2377,
+0742 |                 1.2473,
+0743 |                 1.2514,
+0744 |                 1.2467,
+0745 |                 1.255,
+0746 |                 1.2509,
+0747 |                 1.2567,
+0748 |                 1.2505,
+0749 |                 1.2467,
+0750 |                 1.2498,
+0751 |                 1.253,
+0752 |                 1.2522,
+0753 |                 1.2519,
+0754 |                 1.25,
+0755 |                 1.2543,
+0756 |                 1.2549,
+0757 |                 1.2499,
+0758 |                 1.2467,
+0759 |                 1.2507,
+0760 |                 1.2616,
+0761 |                 1.2505,
+0762 |                 1.2508,
+0763 |                 1.2492,
+0764 |                 1.2507,
+0765 |                 1.2502,
+0766 |                 1.2518,
+0767 |                 1.2537,
+0768 |                 1.2581,
+0769 |                 1.2806,
+0770 |                 1.2775
+0771 |               ]
+0772 |             }
+0773 |           },
+0774 |           "quoteQuality": {
+0775 |             "source": "https://data-api.binance.vision",
+0776 |             "perAsset": {
+0777 |               "BTC": {
+0778 |                 "tickerFirst": 77876,
+0779 |                 "tickerSecond": 77876.01,
+0780 |                 "bid": 77876,
+0781 |                 "ask": 77876.01,
+0782 |                 "minuteClose": 77885.51,
+0783 |                 "minuteAgeMs": 40098,
+0784 |                 "validated": true,
+0785 |                 "gapFromFourHourPct": 0.34,
+0786 |                 "notableMove": false
+0787 |               },
+0788 |               "ETH": {
+0789 |                 "tickerFirst": 2292.53,
+0790 |                 "tickerSecond": 2292.53,
+0791 |                 "bid": 2292.53,
+0792 |                 "ask": 2292.54,
+0793 |                 "minuteClose": 2293.03,
+0794 |                 "minuteAgeMs": 40089,
+0795 |                 "validated": true,
+0796 |                 "gapFromFourHourPct": 0.24,
+0797 |                 "notableMove": false
+0798 |               },
+0799 |               "SOL": {
+0800 |                 "tickerFirst": 93.5,
+0801 |                 "tickerSecond": 93.5,
+0802 |                 "bid": 93.49,
+0803 |                 "ask": 93.5,
+0804 |                 "minuteClose": 93.51,
+0805 |                 "minuteAgeMs": 40078,
+0806 |                 "validated": true,
+0807 |                 "gapFromFourHourPct": 0.236,
+0808 |                 "notableMove": false
+0809 |               },
+0810 |               "BNB": {
+0811 |                 "tickerFirst": 701.51,
+0812 |                 "tickerSecond": 701.52,
+0813 |                 "bid": 701.51,
+0814 |                 "ask": 701.52,
+0815 |                 "minuteClose": 701.59,
+0816 |                 "minuteAgeMs": 40086,
+0817 |                 "validated": true,
+0818 |                 "gapFromFourHourPct": 0.657,
+0819 |                 "notableMove": false
+0820 |               },
+0821 |               "XRP": {
+0822 |                 "tickerFirst": 1.2806,
+0823 |                 "tickerSecond": 1.2806,
+0824 |                 "bid": 1.2806,
+0825 |                 "ask": 1.2807,
+0826 |                 "minuteClose": 1.2807,
+0827 |                 "minuteAgeMs": 40063,
+0828 |                 "validated": true,
+0829 |                 "gapFromFourHourPct": 0.243,
+0830 |                 "notableMove": false
+0831 |               }
+0832 |             }
+0833 |           },
+0834 |           "quotes": {
+0835 |             "BTC": 77876.01,
+0836 |             "ETH": 2292.53,
+0837 |             "SOL": 93.5,
+0838 |             "BNB": 701.52,
+0839 |             "XRP": 1.2806
+0840 |           }
+0841 |         },
+0842 |         "latencyMinutes": 196.67,
+0843 |         "message": "Início prospectivo. Nenhum sinal ou compra anterior será calculado.",
+0844 |         "quotes": {
+0845 |           "BTC": 77876.01,
+0846 |           "ETH": 2292.53,
+0847 |           "SOL": 93.5,
+0848 |           "BNB": 701.52,
+0849 |           "XRP": 1.2806
+0850 |         },
+0851 |         "account": {
+0852 |           "cash": 50,
+0853 |           "position": null,
+0854 |           "units": 0,
+0855 |           "investedVirtual": 0,
+0856 |           "entryPrice": 0,
+0857 |           "entryAtUTC": null,
+0858 |           "stopFraction": 0,
+0859 |           "cooldownUntilCandleMs": 0,
+0860 |           "hardHalt": false,
+0861 |           "peakEquity": 50,
+0862 |           "closedTrades": 0,
+0863 |           "winningTrades": 0,
+0864 |           "cumulativeCostsVirtual": 0,
+0865 |           "btcUnits": 0.0006410831782470623,
+0866 |           "equityVirtual": 50,
+0867 |           "btcBenchmarkVirtual": 49.8501125,
+0868 |           "cashBenchmarkVirtual": 50
+0869 |         }
+0870 |       },
+0871 |       "hash": "27a331f44ddcb6aa502e5ef494d45f5ea28a1d15a023ecb3b00f394431f5f3e7"
+0872 |     }
+0873 |   ],
+0874 |   "study": {
+0875 |     "label": "Rotation Lab V4.1 — pesquisa prospectiva protegida + registro-sombra",
+0876 |     "preRegisteredAt": "2026-11-03",
+0877 |     "primaryMetric": "Média de retorno hipotético líquido dos sinais elegíveis em 6 candles versus retorno incondicional de todos os ativos; considerando sobreposição e dependência temporal.",
+0878 |     "minimumSignals": 200,
+0879 |     "stoppingPolicy": "Sem operar dinheiro real; revisão após >=90 dias e pelo menos 200 sinais suficientemente independentes. Resultado inconclusivo se critério não atendido.",
+0880 |     "shadowHorizonsBars": [
+0881 |       1,
+0882 |       3,
+0883 |       6,
+0884 |       12
+0885 |     ],
+0886 |     "cashBenchmark": "Sem juros, capital inicial constante",
+0887 |     "disclaimer": "Sem ordens reais. Shadow são retornos teóricos close-to-close, não executáveis no fechamento passado; todos os custos são hipotéticos. R$ é unidade contábil sem câmbio USDT/BRL."
+0888 |   }
+0889 | }
+0890 | 
+========== FIM: v4-1/state.json ==========
+
+
+========== ARQUIVO 8/9 | INÍCIO: .github/workflows/rotation-lab-v4-1.yml | 64 linhas ==========
+0001 | name: Rotation Lab V4.1 - Paper Audit
+0002 | 
+0003 | on:
+0004 |   workflow_dispatch:
+0005 |   push:
+0006 |     paths:
+0007 |       - 'v4-1/activate.txt'
+0008 |   schedule:
+0009 |     # Six 4h candles per day, with two backup attempts within 90 minutes.
+0010 |     - cron: '23 0,4,8,12,16,20 * * *'
+0011 |     - cron: '53 0,4,8,12,16,20 * * *'
+0012 |     - cron: '23 1,5,9,13,17,21 * * *'
+0013 | 
+0014 | permissions:
+0015 |   contents: write
+0016 | 
+0017 | concurrency:
+0018 |   group: rotation-lab-v4-1-paper-audit
+0019 |   cancel-in-progress: false
+0020 | 
+0021 | jobs:
+0022 |   paper-monitor:
+0023 |     runs-on: ubuntu-latest
+0024 |     timeout-minutes: 9
+0025 |     steps:
+0026 |       - name: Check out main
+0027 |         uses: actions/checkout@v4
+0028 |         with:
+0029 |           ref: main
+0030 |           persist-credentials: true
+0031 |       - name: Use Node.js 22
+0032 |         uses: actions/setup-node@v4
+0033 |         with:
+0034 |           node-version: '22'
+0035 |       - name: Run deterministic and adversarial regression tests
+0036 |         run: node --test v4-1/tests.cjs
+0037 |       - name: Collect one prospective observation and push with bounded retries
+0038 |         shell: bash
+0039 |         run: |
+0040 |           set -euo pipefail
+0041 |           git config user.name "github-actions[bot]"
+0042 |           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+0043 |           for attempt in 1 2 3; do
+0044 |             # A parallel commit from another project cannot overwrite this state.
+0045 |             git fetch --quiet origin main
+0046 |             git reset --hard origin/main
+0047 |             node --test v4-1/tests.cjs
+0048 |             node v4-1/runner.cjs
+0049 |             if git diff --quiet -- v4-1/state.json; then
+0050 |               echo "Already processed, or market closed. No changes."
+0051 |               exit 0
+0052 |             fi
+0053 |             git add v4-1/state.json
+0054 |             git commit -m "V4.1: append a prospectively observed candle [skip ci]"
+0055 |             if git push origin HEAD:main; then
+0056 |               echo "Prospective observation committed."
+0057 |               exit 0
+0058 |             fi
+0059 |             echo "Concurrent push rejected; reloading state. Attempt $attempt."
+0060 |             sleep $((attempt * 3))
+0061 |           done
+0062 |           echo "Unable to save after three consistent re-evaluations."
+0063 |           exit 1
+0064 | 
+========== FIM: .github/workflows/rotation-lab-v4-1.yml ==========
+
+
+========== ARQUIVO 9/9 | INÍCIO: v4-1/README.md | 43 linhas ==========
+0001 | # Rotation Lab V4.1 — experimento prospectivo auditável
+0002 | 
+0003 | **Somente capital virtual. Não se conecta à corretora, não executa ordens nem converte USDT/BRL.**
+0004 | 
+0005 | ## Links
+0006 | - Painel: https://veloraspaces0.github.io/rotation-lab-v1/v4-1/
+0007 | - Estado: https://github.com/veloraspaces0/rotation-lab-v1/blob/main/v4-1/state.json
+0008 | - GitHub Actions: https://github.com/veloraspaces0/rotation-lab-v1/actions/workflows/rotation-lab-v4-1.yml
+0009 | - V4 anterior: https://veloraspaces0.github.io/rotation-lab-v1/v4/ (preservada)
+0010 | 
+0011 | ## Auditoria independente — correções
+0012 | 
+0013 | 1. Preço: duas leituras do ticker, bookTicker e 1m fechado na Binance. Divergências rejeitadas; sem ordens simuladas se qualquer qualidade falhar. São endpoints da mesma Binance, não fontes independentes; movimentos reais extremos também podem ser rejeitados.
+0014 | 2. Evidência: carteira virtual com freio permanente de 6% e registro-sombra contínuo dos cinco ativos sem respeitar freio ou mínimo de ordem. Resultados teóricos com horizontes de 1/3/6/12 candles apenas após maturação. Não são trades efetivos.
+0015 | 3. Atrasos: novas compras bloqueadas depois de 90 minutos; vendas podem ocorrer depois disso com preço contemporâneo validado. Três cron jobs por ciclo e três tentativas de push, sem backfill nem duplicação.
+0016 | 4. Auditoria: cada evento armazena 120 preços de fechamento para cada ativo, indicadores, cotações validadas, decisões e atrasos. SHA-256 de core.js, runner.cjs e do workflow, além da configuração, congelado no BASELINE. GitHub registra histórico de commits, mas hashing por si só não impede reescrita com recálculo. Sem âncora externa independente.
+0017 | 5. Entrada/saída: preço esticado acima da média só bloqueia entrada. O filtro de saída usa regra própria de enfraquecimento em dois candles.
+0018 | 
+0019 | ## Arquivos
+0020 | 
+0021 | - v4-1/core.js: regras, hashes, entradas e sinais-sombra congelados
+0022 | - v4-1/runner.cjs: Binance e qualidade de dados
+0023 | - v4-1/tests.cjs: 16 testes de regressão
+0024 | - v4-1/state.json: histórico prospectivo append-only (Git commits)
+0025 | - .github/workflows/rotation-lab-v4-1.yml: agendamento, validação e retries
+0026 | - v4-1/analysis.js: benchmarks de pesquisa, sem afetar as decisões
+0027 | - v4-1/index.html e app.js: painel read-only
+0028 | 
+0029 | ## Benchmark e metodologia
+0030 | 
+0031 | Compara V4.1 com BTC 100%, 100% em caixa, BTC 65% + caixa 35% e distribuição igual entre os cinco criptoativos. Os benchmarks são hipotéticos e usam custos simulados. Retornos dos sinais-sombra são close-to-close, não execuções disponíveis após o fechamento; sobreposições temporais tornam as amostras dependentes.
+0032 | 
+0033 | Amostra inicial prospectiva é zero; apenas novas observações após ativação contam. Em 30 dias revisar cobertura do cron e integridade; em 60 dias observar retorno dos sinais-sombra; em 90 dias avaliar evidência, admitindo conclusão inconclusiva. Não operar capital real com base nestas medições.
+0034 | 
+0035 | ## Limites restantes
+0036 | 
+0037 | - Não implementa backtest plurianual nem âncora externa em serviço independente.
+0038 | - Freio de 6% não é proteção garantida contra gaps. Não existe stop real na Binance.
+0039 | - R$30 de mínimo por ordem é apenas regra interna ilustrativa.
+0040 | - GitHub Actions pode atrasar, falhar ou ser suspenso; inspecione os logs.
+0041 | - Alterar core.js, runner.cjs ou workflow depois de ativado bloqueia novas avaliações e exige uma nova linha de experimento.
+0042 | 
+0043 | Nenhum arquivo da V4 antiga foi modificado para criar esta versão.
+========== FIM: v4-1/README.md ==========
