@@ -24,6 +24,46 @@
     "cooldownBars": 12,
     "circuitDrawdown": 0.06
   },
-  "events": [],
+  "events": [
+    {
+      "seq": 1,
+      "prevHash": "GENESIS",
+      "type": "BASELINE",
+      "recordedAtUTC": "2026-11-03T22:45:25.187Z",
+      "candleOpenMs": 1793721600000,
+      "payload": {
+        "coreHash": "6f31df4443aa69d74268b377510f6a1ee97b303290bb73e262033120c6497a4f",
+        "configHash": "891a95cd9066249ff39d08de0fa98c3326e1ccc32507c18b97672f702af18003",
+        "message": "Início prospectivo. Nenhum sinal ou compra anterior será calculado.",
+        "quotes": {
+          "BTC": 77810.26,
+          "ETH": 2292.08,
+          "SOL": 93.44,
+          "BNB": 700.66,
+          "XRP": 1.2801
+        },
+        "account": {
+          "cash": 50,
+          "position": null,
+          "units": 0,
+          "investedVirtual": 0,
+          "entryPrice": 0,
+          "entryAtUTC": null,
+          "stopFraction": 0,
+          "cooldownUntilCandleMs": 0,
+          "hardHalt": false,
+          "peakEquity": 50,
+          "closedTrades": 0,
+          "winningTrades": 0,
+          "cumulativeCostsVirtual": 0,
+          "btcUnits": 0.0006416248962540416,
+          "equityVirtual": 50,
+          "btcBenchmarkVirtual": 49.8501125,
+          "cashBenchmarkVirtual": 50
+        }
+      },
+      "hash": "94541a88d0d9dcb0d2853f4de69374975868eaec09aff1c70b69c0315d8e8312"
+    }
+  ],
   "note": "O início ocorre apenas na primeira execução bem-sucedida do GitHub Actions. Nenhuma negociação virtual é retroativa. Todas as cotas são contábeis e sem conversão USD/BRL."
 }
