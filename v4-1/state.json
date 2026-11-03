@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "config": {
+    "strategyId": "rotation-v4-1-audited-2026-11",
+    "initialCapitalVirtual": 50,
+    "maxExposure": 0.65,
+    "riskBudget": 0.03,
+    "minVirtualOrder": 30,
+    "feePctPerSide": 0.1,
+    "slippagePctPerSide": 0.05,
+    "btcFast": 36,
+    "btcSlow": 72,
+    "assetFast": 12,
+    "assetSlow": 36,
+    "confirmationBars": 3,
+    "lookback": 12,
+    "minimumStrength": 1,
+    "maxExtension": 0.045,
+    "volatilityBars": 20,
+    "volatilityStopFactor": 2.5,
+    "minimumStop": 0.025,
+    "maximumStop": 0.05,
+    "takeProfit": 0.02,
+    "cooldownBars": 12,
+    "circuitDrawdown": 0.06
+  },
+  "events": [],
+  "study": {
+    "label": "Rotation Lab V4.1 — pesquisa prospectiva protegida + registro-sombra",
+    "preRegisteredAt": "2026-11-03",
+    "primaryMetric": "Média de retorno hipotético líquido dos sinais elegíveis em 6 candles versus retorno incondicional de todos os ativos; considerando sobreposição e dependência temporal.",
+    "minimumSignals": 200,
+    "stoppingPolicy": "Sem operar dinheiro real; revisão após >=90 dias e pelo menos 200 sinais suficientemente independentes. Resultado inconclusivo se critério não atendido.",
+    "shadowHorizonsBars": [
+      1,
+      3,
+      6,
+      12
+    ],
+    "cashBenchmark": "Sem juros, capital inicial constante",
+    "disclaimer": "Sem ordens reais. Shadow são retornos teóricos close-to-close, não executáveis no fechamento passado; todos os custos são hipotéticos. R$ é unidade contábil sem câmbio USDT/BRL."
+  }
+}
