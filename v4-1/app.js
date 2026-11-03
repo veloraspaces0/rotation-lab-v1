@@ -80,7 +80,7 @@ function metrics(state){
     $('auditStatus').className='statusline';
     $('auditStatus').textContent='Estado inicial vazio: sem eventos para validar.';
     $('updateInfo').textContent='Última consulta ao GitHub: '+localeUTC(new Date().toISOString())+'.';
-    renderShadow(state);
+    renderShadow(state);renderBenchmarks(state);
     draw(state);
     return;
   }
@@ -128,7 +128,7 @@ function metrics(state){
       '<td>'+cash(a.equityVirtual)+'</td><td>'+cash(a.btcBenchmarkVirtual)+'</td>'+
       '<td>'+esc(note)+'</td></tr>';
   }).join('');
-  renderShadow(state);
+  renderShadow(state);renderBenchmarks(state);
     draw(state);
 }
 
@@ -171,6 +171,24 @@ function renderShadow(state){
     '…. A trilha de commits do GitHub é necessária para auditoria independente.';
 }
 
+
+function renderBenchmarks(state){
+  const mod=window.RotationLabV41Analysis;
+  const analysis=mod?.evaluate(state),last=analysis?.last;
+  const cap=state.config?.initialCapitalVirtual||50;
+  const matched=$('benchmarkMatched'),equal=$('benchmarkEqual');
+  if(!last){
+    matched.textContent='—';equal.textContent='—';
+    $('benchmarkMatchedReturn').textContent='Aguardando baseline';
+    $('benchmarkEqualReturn').textContent='Aguardando baseline';
+    return;
+  }
+  matched.textContent=cash(last.exposureMatchedBTC);
+  equal.textContent=cash(last.equalWeightFive);
+  $('benchmarkMatchedReturn').textContent=pct(100*(last.exposureMatchedBTC/cap-1))+' desde o baseline';
+  $('benchmarkEqualReturn').textContent=pct(100*(last.equalWeightFive/cap-1))+' desde o baseline';
+}
+
 function draw(state){
   const canvas=$('equityChart'),width=Math.max(290,canvas.parentElement.clientWidth-20),height=280;
   const ratio=Math.min(3,window.devicePixelRatio||1);
@@ -179,10 +197,13 @@ function draw(state){
   const ctx=canvas.getContext('2d');if(!ctx)return;
   ctx.setTransform(ratio,0,0,ratio,0,0);
   ctx.clearRect(0,0,width,height);
-  const series=state.events.map(e=>e.payload.account);
+  const extras=window.RotationLabV41Analysis?.evaluate(state).points||[];
+  const series=state.events.map((e,i)=>({...e.payload.account,
+    exposureMatchedBTC:extras[i]?.exposureMatchedBTC,
+    equalWeightFive:extras[i]?.equalWeightFive}));
   const capital=state.config?.initialCapitalVirtual||50;
   const total=series.length, values=series.flatMap(a=>[
-    a.equityVirtual,a.btcBenchmarkVirtual,a.cashBenchmarkVirtual]);
+    a.equityVirtual,a.btcBenchmarkVirtual,a.cashBenchmarkVirtual,a.exposureMatchedBTC,a.equalWeightFive].filter(Number.isFinite));
   const min0=Math.min(...values,capital),max0=Math.max(...values,capital);
   const pad=Math.max(.5,(max0-min0)*.2),min=min0-pad,max=max0+pad;
   const x0=44,x1=width-10,y0=10,y1=height-30;
@@ -197,6 +218,8 @@ function draw(state){
   }
   const lines=[
     {field:'cashBenchmarkVirtual',stroke:'#f4c778'},
+    {field:'exposureMatchedBTC',stroke:'#c5a7ed'},
+    {field:'equalWeightFive',stroke:'#ecaa74'},
     {field:'btcBenchmarkVirtual',stroke:'#7daffa'},
     {field:'equityVirtual',stroke:'#66e4b6'}
   ];
