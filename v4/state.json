@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "config": {
+    "strategyId": "rotation-v4-frozen-2026-11",
+    "initialCapitalVirtual": 50,
+    "maxExposure": 0.65,
+    "riskBudget": 0.03,
+    "minVirtualOrder": 30,
+    "feePctPerSide": 0.1,
+    "slippagePctPerSide": 0.05,
+    "btcFast": 36,
+    "btcSlow": 72,
+    "assetFast": 12,
+    "assetSlow": 36,
+    "confirmationBars": 3,
+    "lookback": 12,
+    "minimumStrength": 1,
+    "maxExtension": 0.045,
+    "volatilityBars": 20,
+    "volatilityStopFactor": 2.5,
+    "minimumStop": 0.025,
+    "maximumStop": 0.05,
+    "takeProfit": 0.02,
+    "cooldownBars": 12,
+    "circuitDrawdown": 0.06
+  },
+  "events": [],
+  "note": "O início ocorre apenas na primeira execução bem-sucedida do GitHub Actions. Nenhuma negociação virtual é retroativa. Todas as cotas são contábeis e sem conversão USD/BRL."
+}
