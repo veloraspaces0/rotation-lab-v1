@@ -1,0 +1,5 @@
+ROTATION LAB V4.1 — INITIAL PAPER-ONLY ACTIVATION
+
+This push is a one-time activation trigger.
+Run Node.js regression tests first. If they pass and Binance quote cross-checks validate, record a BASELINE only.
+Do not place real orders, retroactively fill trades, or edit v4/state.json.
