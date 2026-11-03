@@ -92,6 +92,16 @@ footer{padding:18px 2px;color:var(--muted);font-size:11px;line-height:1.65}
     <div class="metric"><div class="label">Queda desde o pico · V4</div><div class="big" id="drawdown">—</div><div class="sub">Freio da carteira, não garantido</div></div>
   </div>
   <section class="section">
+    <div class="eyebrow">BENCHMARKS ADICIONAIS / MESMO MARCO INICIAL</div>
+    <h2>Comparar riscos mais próximos</h2>
+    <p class="muted">Além de manter 100% BTC e 100% em caixa, agora comparamos a alocação hipotética de 65% BTC / 35% caixa e uma carteira de cinco moedas em partes iguais. São referências construídas a partir do marco inicial da V4.1, com custos estimados e sem rebalanceamentos.</p>
+    <div class="mini-grid">
+      <div class="tile"><strong>65% BTC / 35% caixa</strong><div id="benchmarkMatched" style="font-size:24px;font-weight:830">—</div><small id="benchmarkMatchedReturn" class="muted">Aguardando marco inicial</small></div>
+      <div class="tile"><strong>20% cada: BTC / ETH / SOL / BNB / XRP</strong><div id="benchmarkEqual" style="font-size:24px;font-weight:830">—</div><small id="benchmarkEqualReturn" class="muted">Aguardando marco inicial</small></div>
+    </div>
+    <div class="note">As duas referências ficam expostas ao mercado desde o início, enquanto a V4.1 só entra com sinal. Portanto, esta comparação acrescenta contexto, mas não isola totalmente habilidade da estratégia. Cotações são em USDT; R$ é apenas unidade contábil.</div>
+  </section>
+  <section class="section">
     <div class="eyebrow">01 / LINHA DO TEMPO</div>
     <h2>Comparação prospectiva</h2>
     <p class="muted">Cada ponto corresponde a uma observação realmente gravada. Não há curvas retroativas. BTC inclui custos estimados de compra e venda.</p>
@@ -172,6 +182,7 @@ footer{padding:18px 2px;color:var(--muted);font-size:11px;line-height:1.65}
   </section>
   <footer>Rotation Lab V4.1 · Protótipo educacional independente · Binance Spot Market Data pública e somente leitura · GitHub Actions pode atrasar, falhar ou ser desabilitado após inatividade no repositório público. Este painel apenas consulta um histórico público: não observa sua conta e não opera criptomoedas.</footer>
 </main>
-<script src="./app.js?v=1"></script>
+<script src="./analysis.js?v=1"></script>
+<script src="./app.js?v=2"></script>
 </body>
 </html>
