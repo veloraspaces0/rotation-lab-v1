@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071017">
+  <meta name="description" content="Protótipo gratuito de simulação de rotação entre criptomoedas, com comparação contra buy-and-hold, taxas, stop e alvo de lucro.">
+  <title>Rotation Lab V3 — Pesquisa comparativa de criptomoedas</title>
+  <style>
+    :root{--bg:#071017;--panel:#0d1922;--panel2:#101e29;--line:#233540;--muted:#8c9eab;--txt:#e9f2f3;--green:#63e1ae;--blue:#73b7fa;--yellow:#ffc274;--red:#fa8d96;--violet:#bfabff;--radius:16px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse at 83% -10%,#173344 0%,#071017 44%),var(--bg);color:var(--txt);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif;min-height:100vh}
+    button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}a{color:var(--blue)}.page{max-width:1510px;margin:auto;padding:26px clamp(14px,3vw,38px) 70px}
+    .head{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:24px}.brand{display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:43px;height:43px;border:1px solid #347b6c;background:#0c2827;border-radius:13px;color:var(--green);font-size:25px;font-weight:800;box-shadow:0 0 28px #1ee89f13}.brand-title{font-size:21px;font-weight:840;letter-spacing:.01em;line-height:1.1}.brand-title em{font-style:normal;color:var(--green)}.eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--muted);font-weight:740}.header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.pill{font-size:11px;letter-spacing:.035em;border:1px solid var(--line);color:#b6c7d0;padding:7px 11px;border-radius:999px;background:#10202a}.pill.green{border-color:#28755b;color:var(--green);background:#0e2922}
+    .hero{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin:10px 0 23px;flex-wrap:wrap}.hero h1{font-size:clamp(25px,3.5vw,39px);max-width:790px;line-height:1.12;letter-spacing:-.04em;margin:7px 0 9px;font-weight:780}.hero p{color:var(--muted);font-size:14px;margin:0;max-width:700px}.small{font-size:11px;color:var(--muted)}.button{border:1px solid #2c4753;background:#182a34;color:var(--txt);border-radius:10px;padding:11px 14px;font-weight:680;display:inline-flex;align-items:center;gap:7px;justify-content:center;white-space:nowrap;min-height:41px;transition:.18s}.button:hover{background:#213948}.button.primary{background:var(--green);color:#06201a;border-color:var(--green)}.button.primary:hover{background:#8af2c6}.button.tiny{padding:8px 10px;min-height:33px;font-size:12px}.button.outline{background:transparent}.button.active{border-color:#388f75;color:var(--green);background:#102e28}.button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+    .layout{display:grid;grid-template-columns:minmax(270px,320px) minmax(0,1fr);gap:17px;align-items:start}.side,.main{min-width:0}.panel{background:linear-gradient(145deg,#0e1c25,#0b1720);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:0 12px 34px #00000014}.side .panel+.panel,.main>.panel+.panel,.main>.split+.panel{margin-top:16px}.panel-title{font-weight:770;font-size:15px;margin:0 0 4px}.panel-desc{font-size:12px;color:var(--muted);margin:0 0 20px}.field{margin:0 0 15px}.field:last-child{margin-bottom:0}.label-row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}.label-row label,.field label{font-size:12px;color:#bbcbd5;font-weight:690}.hint{font-size:10px;color:var(--muted)}input[type=number],select{width:100%;background:#08131b;border:1px solid #2a404c;color:var(--txt);border-radius:9px;padding:10px 11px;min-height:41px;appearance:auto}input[type=number]{font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:var(--green);cursor:pointer}.rangevalue{font-weight:730;color:var(--green)}.segment{display:grid;grid-template-columns:1fr 1fr;gap:5px;background:#08141c;border:1px solid #273b46;border-radius:10px;padding:4px}.segment button{border:0;border-radius:7px;background:transparent;color:#aabecb;padding:9px 6px;font-size:12px;font-weight:730}.segment button.selected{background:#1d423b;color:#7cf0be;box-shadow:0 2px 8px #0003}.tip{padding:12px 13px;background:#152520;border:1px solid #284b3f;border-radius:11px;font-size:12px;color:#b8d8ca;line-height:1.5}.warn{background:#302318;border-color:#755131;color:#f2caa1}.divider{border:0;border-top:1px solid var(--line);margin:20px 0}
+    .metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.metric{border:1px solid #26404c;border-radius:14px;padding:17px 17px 14px;background:linear-gradient(138deg,#10242f,#0d1a24 80%);min-width:0}.metric.primary{border-color:#276853;background:linear-gradient(135deg,#153c31,#10271f)}.metric-label{color:#aabac6;font-size:11px;letter-spacing:.012em;line-height:1.3}.metric-value{font-size:clamp(18px,2.3vw,28px);font-weight:810;margin:7px 0 4px;letter-spacing:-.045em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}.metric-sub{font-size:11px;color:var(--muted)}.up{color:var(--green)!important}.down{color:var(--red)!important}.neutral{color:var(--txt)}.chart-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.legend{display:flex;gap:15px;align-items:center;flex-wrap:wrap;margin-top:10px}.legend span{display:inline-flex;align-items:center;gap:7px;color:#b5c5cf;font-size:11px}.legend i{height:3px;width:17px;display:inline-block;border-radius:4px}.chart-panel{position:relative}.chart-graph{height:300px;position:relative;margin-top:13px}.chart-graph canvas{width:100%;height:100%;display:block;touch-action:pan-y;cursor:crosshair}.tooltip{position:absolute;background:#132632;border:1px solid #405963;padding:8px 10px;border-radius:9px;pointer-events:none;font-size:11px;box-shadow:0 6px 17px #0006;z-index:2;white-space:nowrap;transform:translate(-50%,-107%);display:none}
+    .split{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-top:16px}.market-list{display:flex;flex-direction:column;gap:6px;margin-top:14px}.market-item{display:grid;grid-template-columns:60px 1fr 66px 65px;align-items:center;gap:8px;padding:10px;background:#0c1922;border:1px solid #203440;border-radius:10px}.coin{font-weight:800;font-size:13px}.coin-sub{font-size:10px;color:var(--muted)}.market-bar-track{height:5px;border-radius:20px;background:#1c2e36;overflow:hidden;margin-top:7px}.market-bar{height:100%;border-radius:20px;background:#63e1ae}.market-score{text-align:right;font-size:12px;font-weight:770}.market-change{text-align:right;font-size:11px}.market-head{display:grid;grid-template-columns:60px 1fr 66px 65px;gap:8px;padding:0 10px;color:var(--muted);font-size:10px;letter-spacing:.01em}.market-head :nth-child(n+3){text-align:right}
+    .insight{display:flex;gap:11px;padding:13px 14px;border:1px solid #295849;background:linear-gradient(100deg,#122e29,#13292a);border-radius:11px;margin-top:13px}.insight-ico{border-radius:9px;background:#1e493d;width:32px;height:32px;display:grid;place-items:center;flex-shrink:0;font-size:15px}.insight-title{font-weight:750;font-size:13px;margin-bottom:4px}.insight-body{font-size:12px;color:#bad5ca}.compare{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:13px}.compare .tile{background:#0c1a23;border:1px solid #243b47;border-radius:10px;padding:12px}.tile-k{font-size:10px;color:var(--muted)}.tile-v{font-size:19px;font-weight:780;margin-top:5px;font-variant-numeric:tabular-nums}.tile-s{font-size:10px;color:var(--muted);margin-top:2px}
+    .row-head{display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:13px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;min-width:630px}th{font-size:10px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;font-weight:780;border-bottom:1px solid var(--line);padding:10px 12px 11px 0}td{border-bottom:1px solid #1d313b;padding:11px 12px 11px 0;font-size:12px;color:#d6e1e6}td:last-child,th:last-child{padding-right:0}td strong{font-weight:790}td.muted{color:var(--muted)}tbody tr:last-child td{border-bottom:0}.tag{font-size:10px;font-weight:790;letter-spacing:.04em;padding:5px 7px;border-radius:6px;display:inline-block;background:#14372e;color:var(--green);white-space:nowrap}.tag.sell{background:#392720;color:var(--yellow)}.tag.stop{background:#3d2229;color:var(--red)}.footer{color:#8ca2ad;font-size:11px;line-height:1.75;margin-top:22px;padding-top:15px;border-top:1px solid #1d323c}.status{min-height:18px;font-size:11px;color:#9db5bf;margin-top:11px}.a11y{position:absolute;clip-path:inset(100%)}.section-id{font-size:10px;color:var(--green);font-weight:800;letter-spacing:.14em}.demo-banner{background:linear-gradient(90deg,#2e2617,#1d251f);border:1px solid #685434;border-radius:12px;padding:10px 14px;color:#eacaa2;font-size:12px;margin-bottom:15px}.hidden{display:none!important}
+    @media(max-width:1100px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.split{grid-template-columns:1fr}.compare{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:750px){.page{padding:17px 12px 50px}.header-actions{width:100%;gap:6px}.head{margin-bottom:15px}.hero{margin-bottom:19px}.hero h1{font-size:29px}.layout{grid-template-columns:minmax(0,1fr)}.side{display:contents}.side .settings-panel{order:2}.side .explain-panel{order:4}.main{display:contents}.metric-grid{order:1;grid-column:1}.main>.chart-panel{order:3}.main>.split{order:5}.main>.history-panel{order:6}.metric-grid{gap:8px}.metric{padding:14px 12px}.metric-value{font-size:21px}.panel{padding:15px}.chart-graph{height:260px}.split{margin-top:0}.side .panel+.panel,.main>.panel+.panel,.main>.split+.panel{margin-top:0}.main>.chart-panel{margin-top:0}.market-item{grid-template-columns:44px 1fr 55px 55px;gap:4px;padding:10px 8px}.market-head{grid-template-columns:44px 1fr 55px 55px;gap:4px;padding:0 8px}.coin{font-size:12px}.compare{gap:5px}.compare .tile{padding:10px 8px}.tile-v{font-size:17px}}
+    @media(max-width:400px){.metric-value{font-size:19px}.header-actions .button{font-size:11px;padding:8px 10px}.hero h1{font-size:26px}.compare{grid-template-columns:1fr 1fr}.compare .tile:last-child{grid-column:span 2}}
+  
+    /* V2: comparacao antes dos indicadores da V1; layout responsivo */
+    .v2-dashboard{margin:17px 0 19px;border-color:#31594f;box-shadow:0 16px 45px #00000024}
+    .v2-top{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px}
+    .v2-title{font-size:22px;font-weight:820;margin:5px 0}
+    .v2-source{font-size:12px;line-height:1.6;font-weight:730;border-radius:10px;padding:9px 12px;display:inline-block}
+    .v2-warning{color:#ffdda7;background:#342718;border:1px solid #715633}
+    .v2-live{color:#97f1c9;background:#15362d;border:1px solid #366657}
+    .v2-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:18px 0}
+    .v2-card{border:1px solid #2b414b;border-radius:12px;padding:12px;background:#101e28;min-width:0}
+    .v2-k{font-size:11px;min-height:28px;color:#aebdc9;line-height:1.4}
+    .v2-value{font-size:22px;font-weight:800;letter-spacing:-.7px;margin:8px 0}
+    .v2-up{color:#63e1ae;font-weight:750}
+    .v2-down{color:#fa8d96;font-weight:750}
+    .v2-meta{font-size:11px;color:#91a9b8;line-height:1.55}
+    .v2-table-wrap{overflow-x:auto;border:1px solid #263d49;border-radius:12px;margin:12px 0}
+    .v2-table{width:100%;min-width:640px;border-collapse:collapse;font-size:12px;text-align:right}
+    .v2-table th,.v2-table td{padding:12px 11px;border-bottom:1px solid #223742;font-variant-numeric:tabular-nums}
+    .v2-table thead th{color:#9bb4c2;font-size:11px;background:#132530}
+    .v2-table th:first-child{text-align:left}
+    .v2-table tr:last-child td,.v2-table tr:last-child th{border-bottom:0}
+    .v2-main-row{background:#15342d}
+    .v2-chart-wrap{margin:16px 0;background:#091720;border:1px solid #223945;border-radius:12px;padding:10px;overflow:hidden}
+    .v2-legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11px;color:#a8bac6}
+    .v2-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+    .v2-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:13px}
+    .v2-actions .button{min-height:40px}
+
+    /* Diagnóstico detalhado: cada operação da V2 */
+    .v2-diagnostics{margin-top:16px;padding:14px;border:1px solid #2b414b;border-radius:13px;background:#0a1821}
+    .v2-diag-title{font-size:17px;font-weight:800;margin:4px 0 6px}
+    .v2-diag-summary{font-size:13px;color:#c6d7df;line-height:1.6;margin:12px 0}
+    .v2-diag-note{font-size:12px;color:#a6b8c2;line-height:1.55}
+    .v2-diag-table{width:100%;min-width:860px;border-collapse:collapse;font-size:12px}
+    .v2-diag-table th,.v2-diag-table td{border-bottom:1px solid #223742;padding:9px 10px;vertical-align:top}
+    .v2-diag-table th{color:#aec0c9;text-align:left;background:#132530;font-size:11px;white-space:nowrap}
+    .v2-diag-table td:nth-child(1),.v2-diag-table td:nth-child(4),.v2-diag-table td:nth-child(6){white-space:nowrap}
+    .v2-diag-table td:nth-child(5){min-width:170px}
+    .v2-diag-table tr:last-child td{border-bottom:0}
+    .v2-diag-table td:nth-child(6),.v2-diag-table td:nth-child(7){text-align:right}
+
+    .v2-foot{margin-top:14px;padding:11px 13px;background:#242219;border:1px solid #554d33;border-radius:10px;font-size:12px;line-height:1.55;color:#dbcba8}
+    .v2-signal{font-size:12px;color:#bed3db;margin-top:9px}
+    @media(max-width:750px){.v2-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .v2-card{padding:11px}.v2-value{font-size:20px}.v2-dashboard{margin-bottom:18px}
+      .v2-actions .button{flex:1 1 155px}.v2-title{font-size:19px}}
+
+    /* V3 independent research panel, mobile first */
+    .v3-dashboard{margin:18px 0;border-color:#8f9eb0;box-shadow:0 0 0 1px #ffffff17}
+    .v3-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+    .v3-hero h2{font-size:24px;font-weight:840;margin:6px 0 5px;letter-spacing:-.5px}
+    .v3-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+    .v3-card{background:#101e28;border:1px solid #334852;border-radius:12px;padding:12px;min-width:0}
+    .v3-card .k{font-size:11px;color:#aec0c9;min-height:28px}
+    .v3-card .v2-value{font-size:21px;letter-spacing:-.4px;margin:7px 0 4px}
+    .v3-p{font-size:12px;line-height:1.6;color:#a5b9c6}
+    .v3-alert{background:#28281e;border:1px solid #5e5532;color:#e2d5af;padding:10px 12px;border-radius:10px;margin:14px 0;font-size:12px;line-height:1.6}
+    .v3-chart{border:1px solid #233943;background:#081720;border-radius:12px;padding:12px;overflow:hidden;margin:12px 0}
+    .v3-diagnostic{margin-top:15px;padding:12px;border-radius:12px;border:1px solid #2d4957}
+    .v3-label{font-weight:800;font-size:17px;margin:7px 0 4px}
+    .v3-table{width:100%;border-collapse:collapse;min-width:850px;font-size:12px}
+    .v3-table th,.v3-table td{border-bottom:1px solid #223742;padding:10px;text-align:left;vertical-align:top}
+    .v3-table th{background:#122630;color:#a8bcca;white-space:nowrap}
+    .v3-table td:nth-last-child(-n+2){text-align:right;white-space:nowrap}
+    .v3-table tr:last-child td{border-bottom:0}
+    .v3-legend{display:flex;gap:9px 15px;flex-wrap:wrap;font-size:11px;color:#a8c0c9}
+    .v3-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+    @media(max-width:730px){.v3-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.v3-hero h2{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="head">
+    <div class="brand"><div class="mark">↗</div><div><div class="brand-title">ROTATION <em>LAB</em></div><div class="eyebrow">Cripto · comparador de estratégias · V3</div></div></div>
+    <div class="header-actions"><span class="pill green">● SEM CONEXÃO À CONTA</span><span class="pill" id="dataBadge">DADOS DE EXEMPLO</span></div>
+  </header>
+  <section class="hero"><div><div class="eyebrow">STRATEGY WORKBENCH / SIMULADOR</div><h1>V3: confirmar a tendência ou preservar o caixa?</h1><p>Compare seis caminhos em um simulador sem dinheiro real. Teste V3 confirmada, V2, V1, BTC e caixa.</p></div><div class="header-actions"><button class="button outline" id="demoBtn">↺ Modo demonstração</button><button class="button primary" id="liveBtn">↗ Carregar dados reais</button></div></section>
+  <div class="demo-banner" id="demoBanner"><strong>🧪 DEMONSTRAÇÃO:</strong> preços e movimentos fictícios gerados localmente. Os resultados servem para testar o painel, não para validar uma estratégia.</div>
+  <section class="panel v3-dashboard" id="v3Dashboard" aria-label="Laboratório V3 de estratégias">
+    <div class="v3-hero">
+      <div>
+        <div class="section-id">ROTATION LAB V3 · PESQUISA EM CAPITAL VIRTUAL</div>
+        <h2>Entrar com confirmação — ou ficar em caixa?</h2>
+        <p class="panel-desc" style="margin:0">Compare V3, V2, as duas estratégias V1, comprar BTC e não operar — com o mesmo início de janela.</p>
+      </div>
+      <div class="v2-source v2-warning" id="v3Source">DADOS FICTÍCIOS</div>
+    </div>
+    <div class="v3-cards">
+      <div class="v3-card"><div class="k">V3 · Saldo final</div><div class="v2-value" id="v3Final">—</div><div class="v3-p">Capital virtual</div></div>
+      <div class="v3-card"><div class="k">V3 · Retorno</div><div class="v2-value" id="v3Return">—</div><div class="v3-p">Depois dos custos estimados</div></div>
+      <div class="v3-card"><div class="k">V3 · Queda máxima</div><div class="v2-value" id="v3DD">—</div><div class="v3-p">Freio não é garantia</div></div>
+      <div class="v3-card"><div class="k">V3 vs. ficar em caixa</div><div class="v2-value" id="v3VsCash">—</div><div class="v3-p">Diferença em pontos percentuais</div></div>
+    </div>
+    <div class="v3-alert"><strong>Regra de pesquisa, não recomendação financeira.</strong> A V3 exige 3 candles fechados de confirmação, tendência de BTC e da própria moeda, evita preços excessivamente acima da média e usa stop baseado na volatilidade recente (2,5% a 5%). Investe no máximo 65% do caixa na compra e aplica orçamento de risco ilustrativo. Após 6% de queda do pico do patrimônio, tenta liquidar e suspende novas compras até o fim do teste. Gaps podem causar perdas maiores. Preços estão em USDT; o saldo em R$ é uma unidade contábil ilustrativa, sem câmbio.</div>
+    <div class="section-id" style="margin-top:13px">SEIS ESTRATÉGIAS NA MESMA JANELA</div>
+    <div class="v3-p" id="v3Period">Aguardando dados.</div>
+    <div class="v2-table-wrap">
+      <table class="v2-table" aria-label="Comparativo V3 com caixa, BTC, V2 e V1">
+        <thead><tr><th>Estratégia</th><th>Completo</th><th>Primeiros 60%</th><th>Últimos 40%</th><th>Queda máxima</th></tr></thead>
+        <tbody id="v3CompareBody"><tr><td colspan="5">Aguardando dados.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="v3-chart">
+      <div class="v3-legend">
+        <span><i style="background:#fafafa"></i>V3</span>
+        <span><i style="background:#6de0b0"></i>V2</span>
+        <span><i style="background:#f3cf76"></i>Caixa</span>
+        <span><i style="background:#77bbf0"></i>BTC</span>
+        <span><i style="background:#d69b80"></i>V1 rotativo</span>
+        <span><i style="background:#bba9fc"></i>V1 conservador</span>
+      </div>
+      <canvas id="v3Chart" aria-label="Gráfico das seis estratégias" style="display:block;width:100%;height:260px"></canvas>
+    </div>
+    <div class="v3-alert"><strong>Atenção à validade:</strong> já consultamos os dados de agosto a novembro ao desenhar esta V3. Portanto, a seção “últimos 40%” não representa uma amostra independente ou uma prova de lucratividade. Precisamos validar em datas ainda não examinadas ou com simulação futura.</div>
+    <section class="v3-diagnostic">
+      <div class="section-id">RAIO-X DAS POSIÇÕES / V3</div>
+      <h3 class="v3-label">Entradas, saídas e perdas</h3>
+      <p class="v3-p" id="v3Diagnostics">Aguardando a simulação.</p>
+      <p class="v3-p" id="v3Reasons"></p>
+      <div class="v2-table-wrap">
+        <table class="v3-table" aria-label="Histórico completo de posições encerradas V3">
+          <thead><tr><th>Moeda</th><th>Compra UTC</th><th>Venda UTC</th><th>Duração</th><th>Motivo de saída</th><th>P&L virtual</th><th>Retorno</th></tr></thead>
+          <tbody id="v3Orders"><tr><td colspan="7">Aguardando a simulação.</td></tr></tbody>
+        </table>
+      </div>
+      <p class="v3-p" id="v3Open"></p>
+    </section>
+    <div class="v2-actions">
+      <button class="button primary" type="button" id="v3GitHub">Enviar resultado ao GitHub</button>
+      <button class="button outline" type="button" id="v3Csv">Baixar CSV</button>
+      <button class="button outline" type="button" id="v3Copy">Copiar relatório</button>
+    </div>
+    <p class="v3-p" id="v3ReportStatus" style="margin-top:8px">Relatórios são públicos e exigem confirmação no GitHub (Submit new issue). Nenhuma operação real é enviada.</p>
+    <p class="v3-p" id="v3Status" style="margin-top:10px">Aguardando o primeiro teste.</p>
+  </section>
+  <section class="panel v2-dashboard" id="v2Dashboard" aria-label="Laboratório Rotation Lab V2">
+    <div class="v2-top">
+      <div>
+        <div class="section-id">ROTATION LAB V2 / LABORATÓRIO DE RISCO</div>
+        <h2 class="v2-title">Referência V2 × V1 × BTC</h2>
+        <p class="panel-desc" style="margin:0">Mesma entrada no histórico, mesmos custos e uma janela final reservada para validação temporal.</p>
+      </div>
+      <div class="v2-source v2-warning" id="v2Source">DEMONSTRAÇÃO — dados fictícios</div>
+    </div>
+    <div class="v2-cards">
+      <div class="v2-card"><div class="v2-k">V2 · Patrimônio final</div><div class="v2-value" id="v2Final">—</div><div class="v2-meta">Capital simulado, sem conversão USD/BRL</div></div>
+      <div class="v2-card"><div class="v2-k">V2 · Retorno total</div><div class="v2-value" id="v2Return">—</div><div class="v2-meta">Depois de custos hipotéticos</div></div>
+      <div class="v2-card"><div class="v2-k">V2 · Últimos 40%</div><div class="v2-value" id="v2Test">—</div><div class="v2-meta">Validação temporal separada</div></div>
+      <div class="v2-card"><div class="v2-k">V2 · Maior queda</div><div class="v2-value" id="v2Risk">—</div><div class="v2-meta">Não é limite máximo garantido</div></div>
+    </div>
+    <div class="section-id" style="margin-top:16px">COMPARATIVO NO MESMO PERÍODO</div>
+    <div class="v2-meta" id="v2Period">Aguardando dados da simulação</div>
+    <p class="v2-meta" style="margin-top:9px">Para comparar sem vantagem artificial, todas as estratégias começam depois do mesmo aquecimento de 72 candles; por isso os números da V1 aqui podem diferir do relatório V1 original. A divisão 60/40 é uma checagem temporal exploratória, não validação prospectiva nem garantia de lucro.</p>
+    <div class="v2-table-wrap">
+      <table class="v2-table" aria-label="Comparação de desempenho V2, V1 e BTC">
+        <thead><tr><th>Estratégia</th><th>Período completo</th><th>Primeiros 60%</th><th>Últimos 40%</th><th>Queda máxima</th></tr></thead>
+        <tbody id="v2CompareBody"><tr><td colspan="5">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="v2-chart-wrap">
+      <div class="v2-legend">
+        <span><i style="background:#63e1ae"></i>V2</span>
+        <span><i style="background:#ffc274"></i>V1 rotativo</span>
+        <span><i style="background:#bfabff"></i>V1 conservador</span>
+        <span><i style="background:#73b7fa"></i>BTC</span>
+      </div>
+      <canvas id="v2Chart" style="display:block;width:100%;height:270px" aria-label="Evolução do patrimônio nas quatro estratégias"></canvas>
+    </div>
+    <div class="v2-signal" id="v2Signal">Aguardando comparação.</div>
+    <div class="v2-meta" id="v2Operations" style="margin-top:9px">Aguardando operações.</div>
+
+    <section class="v2-diagnostics" aria-label="Diagnóstico de operações V2">
+      <div class="section-id">DIAGNÓSTICO DAS OPERAÇÕES / V2</div>
+      <h3 class="v2-diag-title">Por que cada posição foi encerrada?</h3>
+      <p class="v2-diag-note">Histórico completo de posições encerradas no teste atual. Motivos e valores calculados pelo simulador, não operações reais.</p>
+      <div class="v2-diag-summary" id="v2DiagnosticsSummary">Aguardando a simulação.</div>
+      <div class="v2-table-wrap">
+        <table class="v2-diag-table" aria-label="Histórico detalhado de posições encerradas V2">
+          <thead><tr><th># / Moeda</th><th>Compra (UTC)</th><th>Venda (UTC)</th><th>Duração</th><th>Motivo da saída</th><th>P&L líquido*</th><th>Retorno líquido</th></tr></thead>
+          <tbody id="v2TradeBody"><tr><td colspan="7">Aguardando a simulação.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="v2-diag-note" id="v2DiagnosticsBreakdown" style="margin-top:10px"></div>
+      <div class="v2-diag-note" id="v2OpenTrade" style="margin-top:8px"></div>
+      <div class="v2-actions"><button class="button outline" type="button" id="v2CsvBtn">Baixar operações CSV</button></div>
+      <p class="v2-diag-note" style="margin-top:9px">* P&L líquido inclui custos estimados de compra e venda. O símbolo R$ é apenas a unidade contábil virtual; preços de criptomoedas são históricos em USDT, sem conversão cambial.</p>
+    </section>
+    <div class="v2-foot"><strong>Regras V2 pré-definidas:</strong> alocação de até 70% do caixa na entrada (pode variar após mudanças de preço), reserva em caixa e stop de 3% na posição, 12 candles de espera, troca somente com vantagem de 2 pontos e sem perda na posição. Só entra quando BTC está acima da média de 72 candles e a média de 36 supera a de 72. Acionamento de proteção após queda de 8% do patrimônio, com pausa de 48 candles. A execução é na abertura seguinte, então gaps e custos podem causar perdas maiores. O mínimo ilustrativo por ordem continua configurável.</div>
+    <div class="v2-actions">
+      <button class="button primary" type="button" id="v2ReportBtn">Enviar resultado ao GitHub</button>
+      <button class="button outline" type="button" id="v2CopyBtn">Copiar relatório</button>
+    </div>
+    <p class="v2-meta" id="v2ReportStatus" style="margin-top:8px">O envio é opcional e público. No GitHub, confirme em <strong>Submit new issue</strong> para publicar. Sem prints.</p>
+    <p class="v2-meta" id="v2Status" style="margin-top:10px">Simulação não iniciada.</p>
+  </section>
+  <div class="layout">
+    <aside class="side">
+      <section class="panel settings-panel">
+        <div class="section-id">CONFIGURAÇÕES DA V1 E CUSTOS COMPARTILHADOS</div><h2 class="panel-title" style="margin-top:6px">Parâmetros do robô</h2><p class="panel-desc">Nenhuma operação é enviada para corretoras.</p>
+        <div class="field"><div class="label-row"><label for="capital">Capital inicial (R$ virtuais)</label><span class="hint">Simulação</span></div><input id="capital" type="number" min="1" max="10000000" step="10" value="50"></div>
+        <div class="field"><div class="label-row"><label>Modo de rotação</label></div><div class="segment" id="modeSelect" role="group" aria-label="Modo de rotação"><button data-mode="rotativo" class="selected" type="button">⚡ Rotativo</button><button data-mode="conservador" type="button">🛡 Não vender no vermelho</button></div><div class="hint" id="modeHint" style="margin-top:7px">Permite realizar prejuízos quando um critério manda sair.</div></div>
+        <div class="field"><div class="label-row"><label for="target">Meta de lucro líquido</label><span class="rangevalue" id="targetV">2,0%</span></div><input id="target" type="range" min="0.5" max="12" step="0.5" value="2"></div>
+        <div class="field"><div class="label-row"><label for="stop">Stop de perda (modo rotativo)</label><span class="rangevalue" id="stopV">4,0%</span></div><input id="stop" type="range" min="1" max="15" step="0.5" value="4"></div>
+        <div class="field"><div class="label-row"><label for="lookback">Janela de força relativa</label><span class="rangevalue" id="lookbackV">12 candles</span></div><input id="lookback" type="range" min="6" max="36" step="2" value="12"><div class="hint">Cada candle representa 4 horas.</div></div>
+        <div class="field"><div class="label-row"><label for="gap">Vantagem mínima para trocar</label><span class="rangevalue" id="gapV">1,0 ponto</span></div><input id="gap" type="range" min="0" max="8" step="0.5" value="1"></div>
+        <div class="field"><div class="label-row"><label for="fee">Taxa por operação (%)</label><span class="hint">Compra e venda</span></div><input id="fee" type="number" min="0" max="3" step="0.01" value="0.10"></div>
+        <div class="field"><div class="label-row"><label for="slip">Slippage estimado (%)</label><span class="hint">Compra e venda</span></div><input id="slip" type="number" min="0" max="3" step="0.01" value="0.05"></div>
+        <div class="field"><div class="label-row"><label for="minOrder">Mínimo simulado por ordem (R$)</label><span class="hint">Não é mínimo real</span></div><input id="minOrder" type="number" min="0" max="100000" step="1" value="30"><div class="hint" style="margin-top:5px">Cada par possui regras próprias na corretora. Valor ilustrativo e ajustável.</div></div>
+        <button class="button primary" style="width:100%" id="runBtn">▶ Rodar simulação</button><div class="status" id="runStatus" role="status">Pronto para simular.</div>
+      </section>
+      <section class="panel explain-panel" style="margin-top:16px"><div class="section-id">COMO FUNCIONA</div><h2 class="panel-title" style="margin-top:6px">Lógica da V1</h2><p class="panel-desc" style="margin-bottom:11px">Regras objetivas, sem adivinhar o futuro.</p><div class="tip">① Mede o desempenho recente de BTC, ETH, SOL, BNB e XRP.<br><br>② Compra a moeda com força positiva, se houver.<br><br>③ Ao atingir a meta <strong>líquida</strong>, vende e fica em caixa.<br><br>④ Se outra moeda mostrar força superior, pode trocar; no modo conservador, não realiza prejuízo voluntário.<br><br>⑤ No rotativo, o stop pode encerrar uma posição em perda.</div><p class="small" style="margin:12px 0 0">Sinais são calculados no fechamento de cada candle e executados só na abertura do próximo. Nada de olhar o futuro.</p></section>
+    </aside>
+    <main class="main">
+      <section class="metric-grid" aria-label="Resultados principais da V1"><div class="section-id" style="grid-column:1/-1;margin:0 0 2px">INDICADORES DA V1 — REFERÊNCIA</div>
+        <div class="metric"><div class="metric-label">Capital de partida</div><div class="metric-value" id="mCapital">R$ 50,00</div><div class="metric-sub">Saldo virtual inicial</div></div>
+        <div class="metric primary"><div class="metric-label">Patrimônio final estimado</div><div class="metric-value" id="mFinal">—</div><div class="metric-sub" id="mFinalSub">Após custos simulados</div></div>
+        <div class="metric"><div class="metric-label">Retorno da estratégia</div><div class="metric-value" id="mReturn">—</div><div class="metric-sub" id="mReturnSub">Resultado do intervalo</div></div>
+        <div class="metric"><div class="metric-label">Diferença versus manter BTC</div><div class="metric-value" id="mDelta">—</div><div class="metric-sub" id="mDeltaSub">Em pontos percentuais</div></div>
+      </section>
+      <section class="panel chart-panel">
+        <div class="chart-top"><div><div class="section-id">02 / DESEMPENHO</div><h2 class="panel-title" style="margin-top:6px">Evolução do capital</h2><p class="panel-desc" style="margin-bottom:0" id="periodCaption">Comparação da mesma janela histórica</p></div><div><span class="pill" id="intervalChip">4H</span></div></div>
+        <div class="legend"><span><i style="background:#63e1ae"></i>Estratégia selecionada</span><span><i style="background:#73b7fa"></i>Segurar BTC</span><span><i style="background:#bfabff"></i>Outra estratégia</span></div>
+        <div class="chart-graph" id="chartArea"><canvas id="equityChart" aria-label="Gráfico de patrimônio das três estratégias"></canvas><div class="tooltip" id="chartTooltip"></div></div>
+      </section>
+      <div class="split">
+        <section class="panel"><div class="section-id">03 / MERCADO</div><h2 class="panel-title" style="margin-top:6px">Radar de força relativa</h2><p class="panel-desc">Ranking matemático do último candle disponível, não previsão.</p><div class="market-head"><span>Moeda</span><span>Força relativa</span><span>Score</span><span>24h</span></div><div class="market-list" id="marketList"></div><div class="small" id="marketNote" style="margin-top:12px"></div></section>
+        <section class="panel"><div class="section-id">04 / ANÁLISE</div><h2 class="panel-title" style="margin-top:6px">A comparação que importa</h2><p class="panel-desc">Três abordagens sobre a mesma série de preços.</p><div class="compare"><div class="tile"><div class="tile-k">Rotativo</div><div class="tile-v" id="cmpRot">—</div><div class="tile-s">Pode trocar com perda</div></div><div class="tile"><div class="tile-k">Conservador</div><div class="tile-v" id="cmpCon">—</div><div class="tile-s">Sem venda com perda</div></div><div class="tile"><div class="tile-k">Manter BTC</div><div class="tile-v" id="cmpHold">—</div><div class="tile-s">Comprar e segurar</div></div></div><div class="insight"><div class="insight-ico">◎</div><div><div class="insight-title" id="insightTitle">Aguardando cálculo</div><div class="insight-body" id="insightBody">Vamos comparar as estratégias.</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px"><div class="tile"><div class="tile-k">Maior queda (drawdown)</div><div class="tile-v" id="drawdown" style="font-size:17px">—</div></div><div class="tile"><div class="tile-k">Trocas / vendas</div><div class="tile-v" id="tradeCount" style="font-size:17px">—</div></div></div></section>
+      </div>
+      <section class="panel history-panel" style="margin-top:16px"><div class="row-head"><div><div class="section-id">05 / AUDITORIA</div><h2 class="panel-title" style="margin-top:6px">Operações simuladas</h2><span class="small" id="historySubtitle">Entradas e saídas registradas na simulação.</span></div><button class="button tiny" id="csvBtn">↓ Exportar CSV</button></div><div class="table-wrap"><table><thead><tr><th>Quando (UTC)</th><th>Ação</th><th>Moeda</th><th>Preço USDT</th><th>Saldo após</th><th>Motivo</th></tr></thead><tbody id="historyBody"><tr><td colspan="6" class="muted">Rode uma simulação para ver o histórico.</td></tr></tbody></table></div></section>
+    </main>
+  </div>
+  <footer class="footer"><strong>IMPORTANTE:</strong> Este é um laboratório de pesquisa e simulação, não um sistema de ordens ou recomendação financeira. Dados demo são fictícios. No modo público, preços históricos vêm dos pares USDT da Binance; o capital exibido em R$ é uma <strong>unidade contábil ilustrativa</strong>, aplicando somente variações percentuais das criptos (não considera USD/BRL, tributação ou regras reais de lotes/mínimos). Custos e slippage são hipóteses ajustáveis. Backtests não comprovam ganhos futuros. Nenhum login, chave de API ou dinheiro real é utilizado.<br><span id="sourceFooter">Fonte de mercado (modo público): Binance Spot Market Data, data-api.binance.vision · somente leitura.</span></footer>
+</div>
+<script>
+'use strict';
+(() => {
+  const SYMBOLS=['BTC','ETH','SOL','BNB','XRP'];
+  const COLORS={BTC:'#f0b55a',ETH:'#8797fb',SOL:'#70efc4',BNB:'#f1d56e',XRP:'#92b5d7'};
+  const $=id=>document.getElementById(id);
+  const money=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2});
+  const signed=(n,d=2)=>(n>0?'+':'')+n.toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d})+'%';
+  const fmt=n=>Number(n).toLocaleString('pt-BR',{maximumFractionDigits:n>=100?2:n>=1?4:6});
+  const dateStr=t=>new Date(t).toLocaleString('pt-BR',{timeZone:'UTC',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const clamp=(x,a,b)=>Math.max(a,Math.min(x,b));
+  const html=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+  const colorize=(n,element)=>{element.classList.remove('up','down');element.classList.add(n>=0?'up':'down')};
+  let data=null, source='demo', mode='rotativo', latestResults=null, hoverIndex=null, activeLoad=false;
+  function seeded(seed){return function(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}};
+  function demoData(){
+    const rand=seeded(812071),n=440;
+    const stamp=Math.floor(Date.now()/14400000)*14400000-n*14400000;
+    const initial={BTC:83500,ETH:3100,SOL:145,BNB:680,XRP:2.05},vol={BTC:.013,ETH:.019,SOL:.028,BNB:.016,XRP:.026};
+    const out={};for(const sym of SYMBOLS)out[sym]=[];
+    for(let i=0;i<n;i++){
+      const pulse=(rand()-.5)*2;const phase=(i<75?-.0025:i<160?.003:i<245?-.002:i<330?.0015:-.001);
+      for(let k=0;k<SYMBOLS.length;k++){
+        const sym=SYMBOLS[k],prev=out[sym].at(-1);const op=prev?prev.c:initial[sym];
+        const sector=Math.sin((i+k*18)/18)*.003+(k===2&&i>110&&i<180?.002:0)+(k===4&&i>290&&i<355?.004:0);
+        const shock=(rand()-.5)*2;
+        const r=phase*(.65+k*.16)+pulse*vol[sym]*.7+shock*vol[sym]*.53+sector;
+        const cl=op*Math.exp(r);
+        out[sym].push({t:stamp+i*14400000,o:op,c:cl});
+      }
+    }
+    return out;
+  }
+  function readParams(){
+    const v=(id,a,b,fallback)=>{const n=Number($(id).value);return Number.isFinite(n)?clamp(n,a,b):fallback};
+    return {capital:v('capital',1,10000000,50),target:v('target',.5,12,2)/100,stop:v('stop',1,15,4)/100,lookback:Math.round(v('lookback',6,36,12)),gap:v('gap',0,8,1),fee:v('fee',0,3,.1)/100,slip:v('slip',0,3,.05)/100,minOrder:v('minOrder',0,100000,30),minHold:3,minScore:.15,cooldown:2};
+  }
+  function getScore(data,s,i,p){
+    const seq=data[s];if(i<p.lookback)return null;
+    const now=seq[i].c, old=seq[i-p.lookback].c,fast=seq[i-Math.max(2,Math.floor(p.lookback/3))].c;
+    const long=Math.log(now/old)*100,short=Math.log(now/fast)*100;
+    let sum=0,sq=0;
+    for(let k=i-p.lookback+1;k<=i;k++){const ret=Math.log(seq[k].c/seq[k-1].c)*100;sum+=ret;sq+=ret*ret}
+    const variance=Math.max(0,sq/p.lookback-(sum/p.lookback)**2),vol=Math.sqrt(variance)*Math.sqrt(p.lookback);
+    return .7*long+.3*short-.08*vol;
+  }
+  function scoreList(data,i,p){return SYMBOLS.map(s=>({s,score:getScore(data,s,i,p),pct24:((data[s][i].c/data[s][Math.max(0,i-6)].c)-1)*100})).sort((a,b)=>b.score-a.score)}
+  function simulate(data,p,kind){
+    const n=data.BTC.length,start=p.lookback+2,cost=p.fee+p.slip;
+    let cash=p.capital,pos=null,qty=0,entryCash=0,entryBar=0,cooldownEnd=0,pending=null,fees=0,trades=[],wins=0,closed=0,swaps=0,peak=p.capital,maxDD=0;
+    const curve=[],index=[];
+    function buy(s,i,reason){const price=data[s][i].o;if(cash+1e-8<p.minOrder || !Number.isFinite(price) || price<=0)return false;const spent=cash;qty=spent*(1-cost)/price;fees+=spent*cost;pos=s;entryCash=spent;entryBar=i;cash=0;trades.push({t:data[s][i].t,action:'COMPRA',s,price,bal:qty*price*(1-cost),reason,fee:spent*cost});return true}
+    function sell(i,reason){if(!pos)return;const price=data[pos][i].o;const gross=qty*price,net=gross*(1-cost),pl=net-entryCash;fees+=gross*cost;closed++;if(pl>=0)wins++;trades.push({t:data[pos][i].t,action:reason.startsWith('Stop')?'STOP':'VENDA',s:pos,price,bal:net,reason,fee:gross*cost,pl});cash=net;qty=0;pos=null;entryCash=0;cooldownEnd=i+p.cooldown}
+    // Cada sinal é apurado no fechamento de i-1 e só executado na abertura de i.
+    for(let i=start;i<n;i++){
+      if(pending){
+        const {to,reason}=pending;pending=null;
+        const was=pos;
+        if(was){sell(i,reason);if(to&&to!==was)swaps++}
+        if(to){buy(to,i,reason)}
+      }
+      let eq=pos?qty*data[pos][i].c*(1-cost):cash;
+      // Patrimônio marcado líquido de custo hipotético de saída.
+      if(!Number.isFinite(eq)||eq<0)throw Error('Valor inválido na simulação');
+      peak=Math.max(peak,eq);maxDD=Math.max(maxDD,(peak-eq)/peak*100);
+      curve.push(eq);index.push(i);
+      if(i===n-1)continue;
+      const ranked=scoreList(data,i,p),best=ranked[0];
+      if(!pos){if(i>=cooldownEnd&&best.score>=p.minScore&&cash>=p.minOrder)pending={to:best.s,reason:'Força positiva — entrada'};continue}
+      const current=ranked.find(x=>x.s===pos),pnl=eq/entryCash-1,held=i-entryBar;
+      if(held<1)continue;
+      if(pnl>=p.target){pending={to:null,reason:'Alvo líquido '+signed(p.target*100)};continue}
+      if(kind==='rotativo'&&pnl<=-p.stop){pending={to:null,reason:'Stop '+signed(-p.stop*100)};continue}
+      if(held>=p.minHold&&best.s!==pos&&best.score>=p.minScore&&best.score-current.score>=p.gap){
+        if(kind==='rotativo'||pnl>=0)pending={to:best.s,reason:'Rotação: vantagem '+(best.score-current.score).toFixed(2)+' pts'};
+      }else if(current.score < -1.5&&pnl>=0&&held>=p.minHold){pending={to:null,reason:'Força enfraqueceu — caixa'}}
+    }
+    const last=curve.at(-1),rate=last/p.capital*100-100;
+    return {curve,index,final:last,return:rate,maxDD,fees,closed,wins,swaps,trades,position:pos,entryCash};
+  }
+  function benchmark(data,p,indices){const cost=p.fee+p.slip,first=indices[0],open=data.BTC[first].o,units=p.capital*(1-cost)/open;const curve=indices.map(i=>units*data.BTC[i].c*(1-cost));return {curve,final:curve.at(-1),return:(curve.at(-1)/p.capital-1)*100}}
+  function setRunStatus(t,error=false){$('runStatus').textContent=t;$('runStatus').style.color=error?'#fa8d96':'#a4c6bb'}
+  function run(){if(!data)return;const p=readParams();if(!SYMBOLS.every(s=>Array.isArray(data[s])&&data[s].length>p.lookback+10))return setRunStatus('Dados insuficientes',true);
+    try{const rot=simulate(data,p,'rotativo'),con=simulate(data,p,'conservador'),hold=benchmark(data,p,rot.index);const active=mode==='rotativo'?rot:con;latestResults={rot,con,hold,active,p};render();window.dispatchEvent(new CustomEvent('rotation-lab-v2-data',{detail:{data,p,source}}));window.dispatchEvent(new CustomEvent('rotation-lab-v3-data',{detail:{data,p,source}}));window.dispatchEvent(new CustomEvent('rotation-lab-results',{detail:{rot,con,hold,active,p,mode,source,startUTC:new Date(data.BTC[rot.index[0]].t).toISOString(),endUTC:new Date(data.BTC.at(-1).t).toISOString(),candles:rot.index.length}}));if(p.capital<p.minOrder){setRunStatus('Capital inferior ao mínimo simulado por ordem. Nenhuma compra será executada.',true)}else{setRunStatus('Simulação concluída. '+data.BTC.length+' candles · '+(source==='demo'?'dados fictícios':'dados públicos históricos')+'.')}}
+    catch(e){console.error(e);setRunStatus('Erro: '+String(e.message),true)}
+  }
+  function render(){if(!latestResults)return;const {rot,con,hold,active,p}=latestResults;
+    $('mCapital').textContent=money(p.capital);$('mFinal').textContent=money(active.final);$('mReturn').textContent=signed(active.return);colorize(active.return,$('mReturn'));
+    $('mDelta').textContent=(active.return-hold.return>0?'+':'')+(active.return-hold.return).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' pp';colorize(active.return-hold.return,$('mDelta'));
+    $('mFinalSub').textContent='Capital ' +(active.final>=p.capital?'valorizou':'desvalorizou')+' no período';
+    $('mReturnSub').textContent='Resultado hipotético, já com custos';$('mDeltaSub').textContent='BTC sozinho: '+signed(hold.return);
+    $('cmpRot').textContent=signed(rot.return);colorize(rot.return,$('cmpRot'));$('cmpCon').textContent=signed(con.return);colorize(con.return,$('cmpCon'));$('cmpHold').textContent=signed(hold.return);colorize(hold.return,$('cmpHold'));
+    $('drawdown').textContent='−'+active.maxDD.toLocaleString('pt-BR',{maximumFractionDigits:2,minimumFractionDigits:2})+'%';$('tradeCount').textContent=active.swaps+' trocas · '+active.closed+' saídas';
+    const first=data.BTC[active.index[0]].t,last=data.BTC.at(-1).t;
+    $('periodCaption').textContent=dateStr(first)+' → '+dateStr(last)+' UTC · '+(active.index.length*4/24).toFixed(1)+' dias · capital contábil em R$';
+    $('historySubtitle').textContent=active.trades.length+' eventos de ordens fictícias. Total de custos simulados: '+money(active.fees)+'.';
+    drawTable(active.trades);drawMarket(p);drawInsight(rot,con,hold,active);drawChart();
+    const canTrade=p.capital>=p.minOrder;if(!canTrade)setRunStatus('Capital abaixo do mínimo simulado por ordem; não houve compras. Ajuste o parâmetro.',true);
+  }
+  function drawInsight(rot,con,hold,active){
+    const all=[['Rotação',rot.return],['Conservador',con.return],['Segurar BTC',hold.return]].sort((a,b)=>b[1]-a[1]);
+    const last=scoreList(data,data.BTC.length-1,latestResults.p)[0];
+    $('insightTitle').textContent='Neste período, '+all[0][0]+' teve o maior retorno.';
+    const position=active.position?'A simulação terminou em '+active.position+'.':'A simulação terminou em caixa.';
+    $('insightBody').textContent='Melhor resultado histórico: '+signed(all[0][1])+'. '+position+' No último fechamento, '+last.s+' liderou a força relativa ('+last.score.toFixed(2)+' pts). Isso não prevê a próxima alta.';
+  }
+  function drawMarket(p){const i=data.BTC.length-1,ranked=scoreList(data,i,p);const max=Math.max(...ranked.map(r=>Math.abs(r.score)),1);$('marketList').innerHTML=ranked.map((r,k)=>`<div class="market-item"><div><div class="coin" style="color:${COLORS[r.s]}">${r.s}</div><div class="coin-sub">#${k+1}</div></div><div><div class="small">${r.score>=p.minScore?'Força favorável':r.score<0?'Força negativa':'Sem força clara'}</div><div class="market-bar-track"><div class="market-bar" style="width:${Math.max(3,Math.abs(r.score)/max*100)}%;background:${r.score>=0?'#63e1ae':'#ef8792'}"></div></div></div><div class="market-score ${r.score>=0?'up':'down'}">${r.score>0?'+':''}${r.score.toFixed(2)}</div><div class="market-change ${r.pct24>=0?'up':'down'}">${signed(r.pct24,1)}</div></div>`).join('');
+    $('marketNote').textContent='Último fechamento: '+dateStr(data.BTC[i].t)+' UTC. Score = 70% momentum da janela + 30% momentum curto − penalidade de volatilidade. Não é probabilidade de lucro.';
+  }
+  function drawTable(trades){const shown=[...trades].reverse().slice(0,20);$('historyBody').innerHTML=shown.length?shown.map(x=>`<tr><td class="muted">${dateStr(x.t)}</td><td><span class="tag ${x.action==='STOP'?'stop':x.action==='VENDA'?'sell':''}">${html(x.action)}</span></td><td><strong>${x.s}</strong></td><td>${fmt(x.price)}</td><td>${money(x.bal)}</td><td>${html(x.reason)}</td></tr>`).join(''):'<tr><td colspan="6" class="muted">Nenhuma entrada foi autorizada pelas regras da simulação.</td></tr>'}
+  function chartCoords(){const el=$('chartArea');const rect=el.getBoundingClientRect();return {w:Math.max(200,rect.width),h:Math.max(180,rect.height),x0:53,x1:Math.max(80,rect.width-16),y0:19,y1:Math.max(85,rect.height-35)}}
+  function drawChart(){if(!latestResults)return;const {rot,con,hold,active}=latestResults;const other=mode==='rotativo'?con:rot;const canvas=$('equityChart');const c=canvas.getContext('2d');const {w,h,x0,x1,y0,y1}=chartCoords(),dpr=window.devicePixelRatio||1;canvas.width=Math.floor(w*dpr);canvas.height=Math.floor(h*dpr);c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
+    const curves=[active.curve,hold.curve,other.curve];const values=curves.flat();let min=Math.min(...values),max=Math.max(...values),spread=Math.max(max-min,latestResults.p.capital*.005);min-=spread*.1;max+=spread*.1;
+    const px=i=>x0+i/Math.max(1,active.curve.length-1)*(x1-x0),py=v=>y1-(v-min)/(max-min)*(y1-y0);
+    c.font='11px -apple-system,Segoe UI,sans-serif';c.textAlign='right';for(let j=0;j<=4;j++){const v=min+(max-min)*j/4,y=py(v);c.strokeStyle='#28404a';c.lineWidth=1;c.setLineDash([3,5]);c.beginPath();c.moveTo(x0,y);c.lineTo(x1,y);c.stroke();c.setLineDash([]);c.fillStyle='#91a7b3';c.fillText('R$'+v.toFixed(0),x0-8,y+3)}
+    c.textAlign='center';for(let j=0;j<=4;j++){const i=Math.round((active.curve.length-1)*j/4);c.fillStyle='#899fab';c.fillText(new Date(data.BTC[active.index[i]].t).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'UTC'}),px(i),h-12)}
+    function stroke(curve,color,thick,fill){c.beginPath();curve.forEach((v,i)=>i?c.lineTo(px(i),py(v)):c.moveTo(px(i),py(v)));c.strokeStyle=color;c.lineWidth=thick;c.setLineDash([]);c.stroke();if(fill){c.lineTo(px(curve.length-1),y1);c.lineTo(x0,y1);c.closePath();const gradient=c.createLinearGradient(0,y0,0,y1);gradient.addColorStop(0,'rgba(99,225,174,.17)');gradient.addColorStop(1,'rgba(99,225,174,0)');c.fillStyle=gradient;c.fill()}}
+    stroke(other.curve,'#bfabff',1.55,false);stroke(hold.curve,'#73b7fa',1.65,false);stroke(active.curve,'#63e1ae',2.7,true);
+    if(hoverIndex!=null){const i=clamp(hoverIndex,0,active.curve.length-1);c.strokeStyle='#7896a6';c.setLineDash([3,4]);c.beginPath();c.moveTo(px(i),y0);c.lineTo(px(i),y1);c.stroke();c.setLineDash([]);for(const [curve,color] of [[active.curve,'#63e1ae'],[hold.curve,'#73b7fa'],[other.curve,'#bfabff']]){c.fillStyle=color;c.beginPath();c.arc(px(i),py(curve[i]),3.5,0,Math.PI*2);c.fill()}}
+  }
+  function updateHover(event){if(!latestResults)return;const b=$('equityChart').getBoundingClientRect(),{w,x0,x1}=chartCoords(),n=latestResults.active.curve.length;const x=event.clientX-b.left;hoverIndex=clamp(Math.round((x-x0)/(x1-x0)*(n-1)),0,n-1);const {active,hold,rot,con}=latestResults;const i=hoverIndex,t=data.BTC[active.index[i]].t;const tip=$('chartTooltip');tip.style.display='block';tip.innerHTML=`<strong>${dateStr(t)} UTC</strong><br>Estratégia: <span class="up">${money(active.curve[i])}</span><br>BTC: <span style="color:#73b7fa">${money(hold.curve[i])}</span><br>Outra: <span style="color:#bfabff">${money((mode==='rotativo'?con:rot).curve[i])}</span>`;tip.style.left=clamp(x,90,w-90)+'px';tip.style.top='20px';drawChart()}
+  function setMode(next){mode=next;document.querySelectorAll('#modeSelect button').forEach(b=>b.classList.toggle('selected',b.dataset.mode===next));$('modeHint').textContent=mode==='rotativo'?'Pode realizar prejuízos com stop ou rotação.':'Não vende voluntariamente abaixo do custo; stop é ignorado nesse modo.';$('stop').disabled=mode!=='rotativo';run()}
+  function setSource(next){source=next;$('dataBadge').textContent=source==='demo'?'DADOS DE EXEMPLO':'BINANCE · HISTÓRICO PÚBLICO';$('demoBanner').classList.toggle('hidden',source!=='demo')}
+  function demo(){data=demoData();setSource('demo');run()}
+  async function live(){if(activeLoad)return;activeLoad=true;$('liveBtn').disabled=true;$('liveBtn').textContent='⌛ Buscando 5 moedas...';setRunStatus('Carregando candles públicos fechados pela API sem chave...');
+    const bases=['https://data-api.binance.vision','https://api.binance.com'];
+    try{let found=null,errors=[];
+      for(const base of bases){try{
+        const parts=await Promise.all(SYMBOLS.map(async s=>{
+          const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),14000);
+          try{const url=base+'/api/v3/klines?symbol='+s+'USDT&interval=4h&limit=500';const resp=await fetch(url,{signal:ctrl.signal,cache:'no-store'});if(!resp.ok)throw Error('HTTP '+resp.status+' '+s);const arr=await resp.json();if(!Array.isArray(arr))throw Error('Resposta inesperada');return [s,arr.filter(x=>Number(x[6])<Date.now()).map(x=>({t:Number(x[0]),o:Number(x[1]),c:Number(x[4])}))]}finally{clearTimeout(timer)}
+        }));const obj=Object.fromEntries(parts);const common=new Set(obj.BTC.map(x=>x.t));for(const sym of SYMBOLS.slice(1)){const dates=new Set(obj[sym].map(x=>x.t));for(const t of [...common])if(!dates.has(t))common.delete(t)}const ts=[...common].sort((a,b)=>a-b);if(ts.length<100)throw Error('Poucos candles em comum');const aligned=Object.fromEntries(SYMBOLS.map(s=>{const map=new Map(obj[s].map(x=>[x.t,x]));return [s,ts.map(t=>map.get(t))]}));if(SYMBOLS.some(s=>aligned[s].some(c=>!(c.o>0&&c.c>0))))throw Error('Cotações inválidas');found=aligned;break
+        }catch(e){errors.push(base+': '+e.message)}}
+      if(!found)throw Error(errors.join(' | '));data=found;setSource('live');run();setRunStatus('Dados públicos carregados! '+data.BTC.length+' candles completos por moeda. A simulação usa históricos, não ordens reais.');
+    }catch(e){setRunStatus('Não foi possível acessar os dados públicos neste navegador. Use o modo demo ou hospede no GitHub Pages. '+e.message,true)}finally{$('liveBtn').disabled=false;$('liveBtn').textContent='↗ Carregar dados reais';activeLoad=false}}
+  function downloadCSV(){if(!latestResults)return;const names=['data_utc','acao','moeda','preco_usdt','patrimonio_apos_reais_simulados','custo_simulado','motivo'];const rows=latestResults.active.trades.map(t=>[new Date(t.t).toISOString(),t.action,t.s,t.price.toFixed(8),t.bal.toFixed(6),t.fee.toFixed(6),t.reason]);const escaped=v=>'"'+String(v).replaceAll('"','""')+'"';const csv='\ufeff'+[names,...rows].map(r=>r.map(escaped).join(';')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rotation_lab_v1_operacoes_'+(source==='demo'?'demo':'binance')+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+  function bind(){for(const [id,v,unit] of [['target','targetV','%'],['stop','stopV','%'],['lookback','lookbackV',' candles'],['gap','gapV',' ponto']]){$(id).addEventListener('input',()=>{$(v).textContent=id==='lookback'?$(id).value+unit:Number($(id).value).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+unit.replace(' ponto',' ponto')})}
+    document.querySelectorAll('#modeSelect button').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+    $('runBtn').addEventListener('click',run);$('demoBtn').addEventListener('click',demo);$('liveBtn').addEventListener('click',live);$('csvBtn').addEventListener('click',downloadCSV);
+    $('equityChart').addEventListener('pointermove',updateHover);$('equityChart').addEventListener('pointerleave',()=>{hoverIndex=null;$('chartTooltip').style.display='none';drawChart()});window.addEventListener('resize',()=>{if(latestResults)drawChart()});
+  }
+  bind();demo();
+  // Exportação de funções de análise, para testes automatizados sem modificar a interface.
+  window.RotationLabV1={simulate,benchmark,demoData,getScore,readParams,run,loadPublic:live};
+})();
+</script>
+<script src="../v2/engine.js?v=2"></script>
+<script src="./engine.js?v=1"></script>
+<script src="../v2/ui.js?v=2"></script>
+<script src="./ui.js?v=1"></script>
+</body>
+</html>
