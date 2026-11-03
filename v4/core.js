@@ -134,6 +134,7 @@ function runCycle(state,market,options={}){
   verify(state);
   const config={...DEFAULT_CONFIG,...(state.config||{})};
   const coreHash=options.coreHash||'TEST_ONLY';
+  const configHash=hash(JSON.stringify(config));
   validateMarket(market,config);
   const t=market.candleOpenMs,now=market.capturedAtUTC;
   if(Date.parse(now)<t+BAR_MS)throw Error('Tentativa de avaliar candle ainda aberto');
@@ -145,7 +146,7 @@ function runCycle(state,market,options={}){
       cooldownUntilCandleMs:0,hardHalt:false,peakEquity:config.initialCapitalVirtual,
       closedTrades:0,winningTrades:0,cumulativeCostsVirtual:0,
       btcUnits:config.initialCapitalVirtual*(1-cost)/market.quotes.BTC};
-    append(state,'BASELINE',now,t,{coreHash,
+    append(state,'BASELINE',now,t,{coreHash,configHash,
       message:'Início prospectivo. Nenhum sinal ou compra anterior será calculado.',
       quotes:market.quotes,
       account:snapshotWithMetrics(a,market.quotes,config)});
@@ -154,6 +155,8 @@ function runCycle(state,market,options={}){
   const initial=state.events[0];
   if(initial.payload.coreHash!==coreHash)
     throw Error('O motor da estratégia mudou. V4 bloqueada para preservar regras congeladas. Crie nova versão.');
+  if(initial.payload.configHash!==configHash)
+    throw Error('Configuração modificada após início. Crie nova versão para preservar o histórico.');
   const previous=state.events.at(-1);
   if(t<=previous.candleOpenMs)return {changed:false,reason:'Candle já registrado ou anterior'};
   const missing=Math.max(0,Math.floor((t-previous.candleOpenMs)/BAR_MS)-1);
