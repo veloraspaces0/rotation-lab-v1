@@ -230,7 +230,9 @@ function publish(){
   const data=makeReport();
   if(!data)return $('v2ReportStatus').textContent='Rode uma simulação primeiro.';
   const title='[Rotation Lab V2] '+(source==='demo'?'DEMO':'BINANCE')+' · '+data.createdAtUTC.slice(0,16);
-  const body='Relatório voluntário do Rotation Lab V2 (capital virtual, sem ordens reais):\n\n'+JSON.stringify(data,null,2);
+  const body='Relatório voluntário do Rotation Lab V2 (capital virtual, sem ordens reais).\n'+
+    'Fonte: '+data.marketData+' · Operações encerradas: '+data.tradeDiagnostics.closedCount+
+    ' · Prejuízos: '+data.tradeDiagnostics.losing+'\n\n'+JSON.stringify(data);
   $('v2ReportStatus').textContent='Abrindo GitHub. Revise e toque em Submit new issue para enviar o relatório.';
   const url='https://github.com/veloraspaces0/rotation-lab-v1/issues/new?title='+
     encodeURIComponent(title)+'&body='+encodeURIComponent(body);
