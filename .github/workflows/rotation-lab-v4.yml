@@ -1,0 +1,43 @@
+name: Rotation Lab V4 - Paper Forward
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Binance 4h candles end at 00:00, 04:00, 08:00, 12:00, 16:00 and 20:00 UTC.
+    # A 23-minute buffer avoids using candles that have not fully closed.
+    - cron: '23 0,4,8,12,16,20 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rotation-lab-v4-paper-forward
+  cancel-in-progress: false
+
+jobs:
+  paper-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout the latest main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Prepare Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Retrieve public Binance candles and record one new evaluation
+        run: node v4/runner.cjs
+      - name: Commit only new historical observations
+        run: |
+          if git diff --quiet -- v4/state.json; then
+            echo "No new closed 4h candle; no commit needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v4/state.json
+          git commit -m "V4 paper: append completed market observation [skip ci]"
+          git push origin HEAD:main
