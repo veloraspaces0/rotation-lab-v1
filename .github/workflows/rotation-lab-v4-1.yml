@@ -1,0 +1,63 @@
+name: Rotation Lab V4.1 - Paper Audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'v4-1/activate.txt'
+  schedule:
+    # Six 4h candles per day, with two backup attempts within 90 minutes.
+    - cron: '23 0,4,8,12,16,20 * * *'
+    - cron: '53 0,4,8,12,16,20 * * *'
+    - cron: '23 1,5,9,13,17,21 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rotation-lab-v4-1-paper-audit
+  cancel-in-progress: false
+
+jobs:
+  paper-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run deterministic and adversarial regression tests
+        run: node --test v4-1/tests.cjs
+      - name: Collect one prospective observation and push with bounded retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            # A parallel commit from another project cannot overwrite this state.
+            git fetch --quiet origin main
+            git reset --hard origin/main
+            node --test v4-1/tests.cjs
+            node v4-1/runner.cjs
+            if git diff --quiet -- v4-1/state.json; then
+              echo "Already processed, or market closed. No changes."
+              exit 0
+            fi
+            git add v4-1/state.json
+            git commit -m "V4.1: append a prospectively observed candle [skip ci]"
+            if git push origin HEAD:main; then
+              echo "Prospective observation committed."
+              exit 0
+            fi
+            echo "Concurrent push rejected; reloading state. Attempt $attempt."
+            sleep $((attempt * 3))
+          done
+          echo "Unable to save after three consistent re-evaluations."
+          exit 1
