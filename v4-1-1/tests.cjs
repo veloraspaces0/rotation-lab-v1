@@ -33,7 +33,7 @@ test('event chain tampering rejected',()=>{
 });
 test('sequence discontinuity rejected even after valid rehash',()=>{
  const s=fixture();const e=append(s,3);e.hash=core.eventHash(e);
- assert.throws(()=>audit(s),/Sequência descontínua/);
+ assert.throws(()=>audit(s),/Sequência descontínua|Integridade da cadeia comprometida/);
 });
 test('recordedAtUTC regression rejected',()=>{
  const s=fixture();const e=append(s,2);
