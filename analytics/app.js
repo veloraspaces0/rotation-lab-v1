@@ -60,6 +60,64 @@ function renderHeader(state,research){
   indicator('lastRecord',when(last?.recordedAtUTC));
   indicator('frozenHash',ev[0]?.payload?.coreHash?.slice(0,13)+'…'||'—');
 }
+
+/* V1.1: risk, halt, and realized P&L use only signed V4.1 event history. */
+function renderRisk(state){
+  const portfolio=A.portfolioRisk(state),stats=A.tradeStatistics(state),
+    model=A.riskRewardConfig(state.config);
+  indicator('tradeCount',integer(stats.closed));
+  indicator('tradeSummary',stats.closed?
+    integer(stats.winners)+' vitória(s) · '+integer(stats.losers)+' perda(s) · '+
+      integer(stats.flat)+' empate(s)':
+    'Nenhuma operação virtual encerrada');
+  indicator('winRate',percent(stats.winRatePct));
+  indicator('avgWin',percent(stats.averageWinPct,true));
+  indicator('avgLoss',percent(stats.averageLossPct,true));
+  indicator('payoff',Number.isFinite(stats.payoff)?fmtBR.format(stats.payoff)+'×':'—');
+  paintSigned('expectancy',stats.expectancyPct);
+  const pnl=$('totalPnL');
+  pnl.textContent=money(stats.totalRealizedPnLVirtual);
+  pnl.classList.remove('positive','negative','na');
+  pnl.classList.add(stats.closed===0?'na':stats.totalRealizedPnLVirtual>=0?'positive':'negative');
+  const caveats=[];
+  if(stats.closed===0)caveats.push('Ainda não houve operações virtuais encerradas. Não é possível calcular acerto, payoff ou expectativa.');
+  else if(stats.insufficientSample)caveats.push('Apenas '+stats.closed+' operação(ões): estatísticas descritivas, amostra pequena demais para avaliar vantagem.');
+  else caveats.push('Estatísticas descritivas das operações realizadas, não previsão de resultados futuros.');
+  if(stats.malformed)caveats.push(stats.malformed+' fechamento(s) com dados inválidos foram excluídos.');
+  if(stats.differenceFromAccount!=null&&stats.differenceFromAccount!==0)
+    caveats.push('ATENÇÃO: contagem da conta diverge em '+stats.differenceFromAccount+' fechamento(s).');
+  caveats.push('A expectativa percentual usa retorno médio sobre o capital comprometido em cada operação, não sobre o saldo total.');
+  indicator('tradeSampleNote',caveats.join(' '));
+  indicator('currentDrawdown',percent(portfolio.currentDrawdownPct));
+  indicator('worstDrawdown',percent(portfolio.maxObservedDrawdownPct));
+  indicator('peakEquity',money(portfolio.peakEquity));
+  indicator('underwaterNow',integer(portfolio.currentUnderwaterBars));
+  indicator('underwaterLongest',integer(portfolio.longestUnderwaterBars));
+  indicator('underwaterTotal',integer(portfolio.underwaterObservedBars));
+  indicator('riskMissing',integer(portfolio.unobservedBars));
+  indicator('drawdownNote','Cada candle representa 4h de observação e não negociação contínua. A sequência atual equivale a '+
+    integer(portfolio.currentUnderwaterBars*4)+' horas de candles consecutivos abaixo do pico. '+
+    (portfolio.unobservedBars?'Houve '+integer(portfolio.unobservedBars)+
+      ' candle(s) sem registro; a duração nesses intervalos é desconhecida.':
+      'Nenhuma lacuna detectada entre as avaliações registradas.')+
+    ' O drawdown reflete os snapshots publicados, não os extremos intrabar.');
+  const fmt=n=>Number.isFinite(n)?fmtBR.format(n):'—';
+  indicator('riskModelNote','Configuração congelada: alvo teórico +'+fmt(model.takeProfitPct)+
+    '%, stop entre −'+fmt(model.minimumStopPct)+'% e −'+fmt(model.maximumStopPct)+
+    '%. Se toda operação terminasse exatamente no alvo ou stop, a taxa de acerto de equilíbrio seria de '+
+    fmt(model.breakEvenAtMinimumStopPct)+'% a '+fmt(model.breakEvenAtMaximumStopPct)+
+    '%. Isso NÃO é uma previsão; saídas reais do simulador podem ocorrer em outros preços.');
+  const banner=$('haltBanner');
+  banner.hidden=!portfolio.halted;
+  if(portfolio.halted){
+    indicator('statusLabel','Carteira bloqueada pelo freio');
+    indicator('haltMessage','O primeiro freio permanente ocorreu no evento #'+portfolio.firstHaltSeq+
+      ' ('+when(portfolio.firstHaltAtUTC)+'). Nenhuma nova compra virtual é permitida neste experimento. '+
+      'Após o freio, '+integer(portfolio.shadowEventsAfterHalt)+
+      ' avaliação(ões) com registro-sombra foram gravadas. O registro-sombra pode continuar, sujeito a novas coletas.');
+  }
+}
+
 function renderStudy(research){
   const report=A.summarize(research,horizon);
   paintSigned('eligibleDelta',report.deltaEligible);
@@ -157,6 +215,7 @@ function drawChart(points,defs){
   ctx.fillText('Início',l,b+20);ctx.fillText(points.length>1?'Último registro':'BASELINE',r-85,b+20);
 }
 function showError(error){
+  $('haltBanner').hidden=true;
   indicator('statusLabel','Falha na consulta');
   indicator('chainStatus','Falha na verificação');
   $('chainStatus').classList.add('negative');
@@ -166,6 +225,7 @@ function showError(error){
 function renderAll(){
   if(!context)return;
   renderHeader(context.state,context.research);
+  renderRisk(context.state);
   renderStudy(context.research);
   renderBenchmarks(context.state,context.points);
 }
