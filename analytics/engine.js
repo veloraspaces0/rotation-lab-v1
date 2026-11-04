@@ -191,6 +191,103 @@ function benchmarks(state){
       originalBtc:e.payload.account?.btcBenchmarkVirtual??null};
   }).filter(Boolean);
 }
+
+/* Portfolio-risk snapshot metrics (informational, no retroactive trade simulation).
+ * A skipped candle is an observation gap, not proof the portfolio stayed
+ * underwater through that period.
+ */
+function portfolioRisk(state){
+  const events=state?.events||[];
+  let currentStreak=0,longestStreak=0,underwaterObserved=0,unobservedBars=0;
+  let maxDrawdownPct=0,previous=null,firstHalt=null,last=null;
+  for(const e of events){
+    const account=e.payload?.account;
+    if(!account)continue;
+    if(!firstHalt&&(account.hardHalt===true||
+      ['HALT','SELL_CIRCUIT'].includes(e.payload?.action?.type)))firstHalt=e;
+    const equity=Number(account.equityVirtual),peak=Number(account.peakEquity);
+    const valid=Number.isFinite(equity)&&Number.isFinite(peak)&&peak>0&&equity>=0;
+    if(!valid)continue;
+    const skipped=previous?Math.max(0,Math.floor(
+      (e.candleOpenMs-previous.candleOpenMs)/BAR_MS)-1):0;
+    unobservedBars+=skipped;
+    const drawdownPct=Math.max(0,100*(1-equity/peak));
+    maxDrawdownPct=Math.max(maxDrawdownPct,drawdownPct);
+    const underwater=drawdownPct>1e-7;
+    if(underwater){
+      underwaterObserved++;
+      currentStreak=previous&&skipped===0&&previous.underwater?currentStreak+1:1;
+    }else currentStreak=0;
+    longestStreak=Math.max(longestStreak,currentStreak);
+    last={e,account,equity,peak,drawdownPct};
+    previous={candleOpenMs:e.candleOpenMs,underwater};
+  }
+  const account=events.at(-1)?.payload?.account;
+  return {hasSamples:!!last,
+    halted:account?.hardHalt===true,
+    firstHaltSeq:firstHalt?.seq??null,
+    firstHaltAtUTC:firstHalt?.recordedAtUTC??null,
+    currentEquity:clean(last?.equity),
+    peakEquity:clean(last?.peak),
+    currentDrawdownPct:clean(last?.drawdownPct),
+    maxObservedDrawdownPct:last?maxDrawdownPct:null,
+    currentUnderwaterBars:last?currentStreak:0,
+    longestUnderwaterBars:longestStreak,
+    underwaterObservedBars:underwaterObserved,
+    unobservedBars,
+    // Continued emissions are an observed count, not a guarantee of future activity.
+    shadowEventsAfterHalt:firstHalt?events.filter(
+      e=>e.seq>firstHalt.seq&&Array.isArray(e.payload?.shadow?.emitted)).length:0};
+}
+/* Only realized, closed virtual trades. Percentage is return on
+ * investedVirtual, not on total portfolio equity.
+ */
+function tradeStatistics(state){
+  const events=state?.events||[],trades=[];
+  let malformed=0;
+  for(const e of events){
+    const action=e.payload?.action;
+    if(typeof action?.type!=='string'||!action.type.startsWith('SELL_'))continue;
+    const pct=Number(action.netReturnPct),pnl=Number(action.realizedPnlVirtual);
+    const capital=Number(action.investedVirtual);
+    if(!Number.isFinite(pct)||!Number.isFinite(pnl)||
+       !Number.isFinite(capital)||capital<=0){malformed++;continue}
+    trades.push({seq:e.seq,atUTC:e.recordedAtUTC,asset:action.asset,
+      type:action.type,netReturnPct:pct,realizedPnlVirtual:pnl,
+      investedVirtual:capital});
+  }
+  const winners=trades.filter(t=>t.realizedPnlVirtual>0);
+  const losers=trades.filter(t=>t.realizedPnlVirtual<0);
+  const flat=trades.length-winners.length-losers.length;
+  const meanWin=avg(winners.map(t=>t.netReturnPct));
+  const meanLoss=avg(losers.map(t=>t.netReturnPct));
+  const gain=winners.reduce((s,t)=>s+t.realizedPnlVirtual,0);
+  const loss=losers.reduce((s,t)=>s+Math.abs(t.realizedPnlVirtual),0);
+  const reported=events.at(-1)?.payload?.account?.closedTrades;
+  return {closed:trades.length,winners:winners.length,losers:losers.length,
+    flat,malformed,reportedClosed:Number.isInteger(reported)?reported:null,
+    differenceFromAccount:Number.isInteger(reported)?reported-trades.length:null,
+    winRatePct:trades.length?100*winners.length/trades.length:null,
+    averageWinPct:clean(meanWin),averageLossPct:clean(meanLoss),
+    payoff:meanWin!=null&&meanLoss!=null&&meanLoss<0?meanWin/(-meanLoss):null,
+    expectancyPct:clean(avg(trades.map(t=>t.netReturnPct))),
+    expectancyVirtual:clean(avg(trades.map(t=>t.realizedPnlVirtual))),
+    totalRealizedPnLVirtual:trades.reduce((s,t)=>s+t.realizedPnlVirtual,0),
+    profitFactor:loss>0?gain/loss:null,
+    insufficientSample:trades.length<30,trades};
+}
+function riskRewardConfig(config){
+  const target=Number(config?.takeProfit),low=Number(config?.minimumStop),
+    high=Number(config?.maximumStop);
+  const valid=[target,low,high].every(x=>Number.isFinite(x)&&x>0);
+  return {takeProfitPct:valid?100*target:null,
+    minimumStopPct:valid?100*low:null,
+    maximumStopPct:valid?100*high:null,
+    breakEvenAtMinimumStopPct:valid?100*low/(target+low):null,
+    breakEvenAtMaximumStopPct:valid?100*high/(target+high):null,
+    disclaimer:'Limiar teórico somente se todas as posições encerrassem exatamente no alvo ou stop; não é previsão de taxa de acerto.'};
+}
+
 async function verifyChain(state,digest){
   if(!state||state.schema!==1||!Array.isArray(state.events))throw Error('Formato de estado inválido');
   let prev='GENESIS';
@@ -210,5 +307,5 @@ async function verifyChain(state,digest){
   return true;
 }
 return {ASSETS,HORIZONS,BAR_MS,makePriceIndex,reconstruct,summarize,benchmarks,
-  blockInterval,verifyChain};
+  blockInterval,portfolioRisk,tradeStatistics,riskRewardConfig,verifyChain};
 });
