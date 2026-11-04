@@ -1,0 +1,26 @@
+name: Rotation Lab V4.1.1 - Independent Integrity Audit
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'v4-1-1/**'
+      - '.github/workflows/rotation-lab-v4-1-1-audit.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Existing V4.1 regression tests
+        run: node --test v4-1/tests.cjs
+      - name: Existing analytics regression tests
+        run: node --test analytics/tests.cjs
+      - name: V4.1.1 integrity regression tests
+        run: node --test v4-1-1/tests.cjs
+      - name: Independent audit of the prospective state
+        run: node v4-1-1/integrity.cjs
