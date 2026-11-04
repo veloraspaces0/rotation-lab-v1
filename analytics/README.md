@@ -1,10 +1,23 @@
-# Rotation Lab Analytics V1
+# Rotation Lab Analytics V1.1
 
 **Painel:** https://veloraspaces0.github.io/rotation-lab-v1/analytics/
 
 **Fonte:** estado prospectivo da V4.1 em https://github.com/veloraspaces0/rotation-lab-v1/blob/main/v4-1/state.json
 
 **Separação absoluta:** os arquivos analytics/ são somente leitura. Não alteram os arquivos congelados v4-1/core.js, v4-1/runner.cjs, .github/workflows/rotation-lab-v4-1.yml, v4-1/state.json, nem a V4 anterior. O programa não faz compras ou vendas reais.
+
+
+## Novidades da V1.1 (somente leitura)
+
+Esta versão acrescenta **três avaliações de risco**, sem modificar o motor, os parâmetros congelados ou o histórico da V4.1:
+
+1. **Freio permanente**: o painel apresenta um alerta visível quando o último snapshot da carteira tiver hardHalt=true. Exibe a primeira ocorrência, a data e o número de eventos-sombra efetivamente registrados depois desse freio. Isso é um alerta **na página**, não uma notificação push, e-mail ou Issue automática. O registro-sombra pode continuar enquanto o coletor funcionar.
+2. **Tempo em drawdown**: compara equityVirtual e peakEquity nos snapshots publicados. Exibe profundidade corrente, maior queda observada, quantidade total de candles abaixo do pico e maior sequência consecutiva sem lacunas. Cada candle equivale a 4 horas observadas, **não** monitoramento intrabar. Uma ausência de candles interrompe a contagem da sequência e é informada separadamente; não atribuímos aos períodos ausentes um tempo em queda que não foi observado.
+3. **Risco/retorno das operações fechadas**: utiliza apenas eventos com action.type da família SELL_, realizedPnlVirtual, netReturnPct e investedVirtual válidos. Exibe quantidade, taxa de acerto, ganho e perda médios, *payoff* (média de ganhos percentuais / módulo da média de perdas percentuais), expectativa média de retorno por operação e P&L realizado acumulado. Os retornos são percentuais do capital comprometido **em cada operação**, não do patrimônio da carteira. Sem operações fechadas, as taxas ficam como **indisponíveis**. Se não houver perdas, *payoff* não é infinito: é indefinido. Divergências entre fechamento calculado e account.closedTrades são alertadas.
+4. **Relação alvo/stop informativa**: para os parâmetros atuais, meta teórica líquida de +2%, stop de −2,5% até −5%, e taxa de acerto de equilíbrio idealizada entre **55,56% e 71,43%**. Isto pressupõe que todas as operações saiam exatamente no alvo ou no stop e **não é uma previsão** de resultados.
+5. **Testes adicionais**: nove casos novos cobrem baseline sem operações, drawdown com e sem lacunas, primeiro freio permanente, sinais-sombra posteriores ao freio, cálculos de expectativa/payoff, dados inválidos e funções somente leitura. Total de **20 testes automatizados**.
+
+Observação: um alerta na página não garante ciência imediata do evento. Caso a coleta falhe, a página só pode indicar o último estado publicado pelo GitHub; não existe monitoramento contínuo independente.
 
 ## O que foi implementado
 
