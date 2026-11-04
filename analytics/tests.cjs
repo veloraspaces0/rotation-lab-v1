@@ -87,3 +87,85 @@ test('SHA-256 verifica cadeia e rejeita adulteração',async()=>{
  s.events[0].payload.account.equityVirtual=999;
  await assert.rejects(()=>A.verifyChain(s,digest),/SHA-256/);
 });
+
+// V1.1 risk: synthetic paper-only events, with no real brokerage orders.
+function riskEvent(bar,seq,equity,peak,halted=false){
+ const e=event(bar,seq);
+ e.payload.account={...e.payload.account,equityVirtual:equity,peakEquity:peak,
+    hardHalt:halted,closedTrades:0};
+ return e;
+}
+const near=(actual,expected)=>assert.ok(Math.abs(actual-expected)<1e-8,
+  'expected '+expected+', received '+actual);
+test('V1.1 risk: BASELINE does not fabricate closed trades or trigger halt',()=>{
+ const s=mk(riskEvent(0,1,50,50)),d=A.portfolioRisk(s),t=A.tradeStatistics(s);
+ assert.equal(d.halted,false);assert.equal(d.currentDrawdownPct,0);
+ assert.equal(d.currentUnderwaterBars,0);assert.equal(t.closed,0);
+ assert.equal(t.winRatePct,null);assert.equal(t.expectancyPct,null);
+});
+test('V1.1 risk: underwater consecutive observations and recovered peak',()=>{
+ const s=mk(riskEvent(0,1,50,50),riskEvent(1,2,49,50),
+   riskEvent(2,3,48,50),riskEvent(3,4,50,50),
+   riskEvent(4,5,47,50),riskEvent(5,6,46,50));
+ const d=A.portfolioRisk(s);
+ assert.equal(d.underwaterObservedBars,4);assert.equal(d.currentUnderwaterBars,2);
+ assert.equal(d.longestUnderwaterBars,2);near(d.currentDrawdownPct,8);
+ near(d.maxObservedDrawdownPct,8);assert.equal(d.unobservedBars,0);
+});
+test('V1.1 risk: missing candles are not claimed as observed drawdown time',()=>{
+ const s=mk(riskEvent(0,1,50,50),riskEvent(1,2,48,50),riskEvent(4,3,47,50));
+ const d=A.portfolioRisk(s);
+ assert.equal(d.currentUnderwaterBars,1);
+ assert.equal(d.longestUnderwaterBars,1);
+ assert.equal(d.unobservedBars,2);
+ assert.equal(d.underwaterObservedBars,2);
+});
+test('V1.1 risk: first halt retained even as shadow observations continue',()=>{
+ const s=mk(riskEvent(0,1,50,50),riskEvent(1,2,46.5,50,true),
+    riskEvent(2,3,46.5,50,true));
+ s.events[1].payload.action={type:'SELL_CIRCUIT'};
+ s.events[2].payload.shadow={emitted:[],matured:[]};
+ const d=A.portfolioRisk(s);
+ assert.equal(d.halted,true);assert.equal(d.firstHaltSeq,2);
+ assert.equal(d.shadowEventsAfterHalt,1);
+ assert.equal(d.firstHaltAtUTC,s.events[1].recordedAtUTC);
+});
+test('V1.1 trades: wins losses payoff and expectancy calculated on closed trades',()=>{
+ const a=riskEvent(0,1,50,50),b=riskEvent(1,2,50.65,50.65),c=riskEvent(2,3,49.15,50.65);
+ b.payload.action={type:'SELL_TARGET',netReturnPct:2,investedVirtual:32.5,realizedPnlVirtual:.65};
+ c.payload.action={type:'SELL_STOP',netReturnPct:-5,investedVirtual:30,realizedPnlVirtual:-1.5};
+ b.payload.account.closedTrades=1;c.payload.account.closedTrades=2;
+ const t=A.tradeStatistics(mk(a,b,c));
+ assert.equal(t.closed,2);assert.equal(t.winners,1);assert.equal(t.losers,1);
+ assert.equal(t.winRatePct,50);assert.equal(t.averageWinPct,2);
+ assert.equal(t.averageLossPct,-5);near(t.payoff,.4);
+ near(t.expectancyPct,-1.5);near(t.totalRealizedPnLVirtual,-.85);
+ assert.equal(t.differenceFromAccount,0);
+});
+test('V1.1 trades: no losing trades means undefined payoff, not Infinity',()=>{
+ const s=mk(riskEvent(0,1,50,50),riskEvent(1,2,51,51));
+ s.events[1].payload.action={type:'SELL_TARGET',netReturnPct:2,investedVirtual:50,realizedPnlVirtual:1};
+ s.events[1].payload.account.closedTrades=1;
+ const t=A.tradeStatistics(s);
+ assert.equal(t.winRatePct,100);assert.equal(t.payoff,null);
+ assert.equal(t.profitFactor,null);assert.equal(t.averageLossPct,null);
+});
+test('V1.1 trades: malformed closure excluded and discrepancy disclosed',()=>{
+ const s=mk(riskEvent(0,1,50,50),riskEvent(1,2,49,50));
+ s.events[1].payload.action={type:'SELL_STOP',realizedPnlVirtual:-1,investedVirtual:30};
+ s.events[1].payload.account.closedTrades=1;
+ const t=A.tradeStatistics(s);
+ assert.equal(t.closed,0);assert.equal(t.malformed,1);
+ assert.equal(t.differenceFromAccount,1);
+});
+test('V1.1 thresholds: illustrative break-even win rates, not a prediction',()=>{
+ const c=A.riskRewardConfig({...config,takeProfit:.02,minimumStop:.025,maximumStop:.05});
+ near(c.breakEvenAtMinimumStopPct,55.55555555555556);
+ near(c.breakEvenAtMaximumStopPct,71.42857142857142);
+ assert.match(c.disclaimer,/teórico/);
+});
+test('V1.1 analytics is read-only for all three new functions',()=>{
+ const s=mk(riskEvent(0,1,50,50),riskEvent(1,2,47,50)),before=JSON.stringify(s);
+ A.portfolioRisk(s);A.tradeStatistics(s);A.riskRewardConfig(s.config);
+ assert.equal(JSON.stringify(s),before);
+});
