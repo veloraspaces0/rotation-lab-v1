@@ -1,0 +1,33 @@
+name: Rotation Lab Analytics - Independent Tests
+
+on:
+  push:
+    paths:
+      - 'analytics/**'
+      - '.github/workflows/rotation-lab-analytics.yml'
+  pull_request:
+    paths:
+      - 'analytics/**'
+      - '.github/workflows/rotation-lab-analytics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analytics-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run independent synthetic-data tests
+        run: node --test analytics/tests.cjs
+      - name: Ensure frozen V4.1 files were not modified by Analytics
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain -- v4-1/core.js v4-1/runner.cjs v4-1/state.json .github/workflows/rotation-lab-v4-1.yml)"
