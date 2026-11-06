@@ -635,6 +635,50 @@
         }
       },
       "hash": "945bda36bb8fa4d200a5224a3f5fbd654d0bbf6833b0a0a11de5a3e281c4e311"
+    },
+    {
+      "seq": 15,
+      "prevHash": "945bda36bb8fa4d200a5224a3f5fbd654d0bbf6833b0a0a11de5a3e281c4e311",
+      "type": "EVALUATION",
+      "recordedAtUTC": "2026-11-06T05:18:13.277Z",
+      "candleOpenMs": 1793923200000,
+      "payload": {
+        "source": "Binance Spot público; preços de execução simulados a partir de ticker consultado no momento",
+        "missedCandles": 0,
+        "quoteCapturedAtUTC": "2026-11-06T05:18:13.277Z",
+        "quotes": {
+          "BTC": 75733.99,
+          "ETH": 2229.34,
+          "SOL": 89.39,
+          "BNB": 692.18,
+          "XRP": 1.2001
+        },
+        "candidate": null,
+        "action": {
+          "type": "HOLD",
+          "reason": "Nenhum ativo superou os filtros em 3 candles"
+        },
+        "account": {
+          "cash": 50,
+          "position": null,
+          "units": 0,
+          "investedVirtual": 0,
+          "entryPrice": 0,
+          "entryAtUTC": null,
+          "stopFraction": 0,
+          "cooldownUntilCandleMs": 0,
+          "hardHalt": false,
+          "peakEquity": 50,
+          "closedTrades": 0,
+          "winningTrades": 0,
+          "cumulativeCostsVirtual": 0,
+          "btcUnits": 0.0006416248962540416,
+          "equityVirtual": 50,
+          "btcBenchmarkVirtual": 48.51992426,
+          "cashBenchmarkVirtual": 50
+        }
+      },
+      "hash": "727b06fbf612ae78b2fd2d3e2d68528643da200e35a04a8824c6e926af658e06"
     }
   ],
   "note": "O início ocorre apenas na primeira execução bem-sucedida do GitHub Actions. Nenhuma negociação virtual é retroativa. Todas as cotas são contábeis e sem conversão USD/BRL."
